@@ -1,0 +1,285 @@
+---
+title: 'Professor cubicle (cubículos) endpoints'
+description: 'List, create, update, and delete professor cubicles across campus buildings, including floor location, reference notes, and professor assignment.'
+---
+
+The cubicles resource (`/api/edificios/cubiculos`) lets you list, create, update, and delete professor cubicles. Each cubicle belongs to a building and is assigned to a professor. The response always includes the parent building summary and the professor's linked user account details. Read operations are public; write operations require admin authentication.
+
+<Warning>
+  `POST`, `PUT`, and `DELETE` requests require a valid Bearer token from an account with the `admin` role.
+</Warning>
+
+---
+
+## List all cubicles
+
+<br />
+
+`GET /api/edificios/cubiculos`
+
+Returns all cubicles in the system ordered by building. Each record includes the building name and the assigned professor's user account information.
+
+### Response
+
+<ResponseField name="id_cubiculo" type="integer">Cubicle ID.</ResponseField>
+<ResponseField name="id_profesor" type="integer">Assigned professor's ID.</ResponseField>
+<ResponseField name="id_edificio" type="integer">Parent building ID.</ResponseField>
+<ResponseField name="numero" type="string">Cubicle number or label (e.g., `"C-05"`).</ResponseField>
+<ResponseField name="piso" type="integer">Floor number where the cubicle is located.</ResponseField>
+<ResponseField name="referencia" type="string | null">Optional free-text description of the cubicle's location.</ResponseField>
+<ResponseField name="activo" type="boolean">Whether the cubicle is active.</ResponseField>
+<ResponseField name="edificio" type="object">
+  <Expandable title="properties">
+    <ResponseField name="id_edificio" type="integer">Building ID.</ResponseField>
+    <ResponseField name="nombre" type="string">Building name.</ResponseField>
+  </Expandable>
+</ResponseField>
+<ResponseField name="profesor" type="object">
+  <Expandable title="properties">
+    <ResponseField name="id_profesor" type="integer">Professor profile ID.</ResponseField>
+    <ResponseField name="departamento" type="string">Department.</ResponseField>
+    <ResponseField name="activo" type="boolean">Active status of the professor profile.</ResponseField>
+    <ResponseField name="usuario" type="object">
+      <Expandable title="properties">
+        <ResponseField name="nombre" type="string">Professor's full name.</ResponseField>
+        <ResponseField name="correo" type="string">Professor's email address.</ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.example.com/api/edificios/cubiculos
+```
+
+```json
+[
+  {
+    "id_cubiculo": 1,
+    "id_profesor": 2,
+    "id_edificio": 1,
+    "numero": "C-05",
+    "piso": 2,
+    "referencia": "Junto al elevador, pasillo norte",
+    "activo": true,
+    "edificio": {
+      "id_edificio": 1,
+      "nombre": "Edificio A"
+    },
+    "profesor": {
+      "id_profesor": 2,
+      "departamento": "Sistemas Computacionales",
+      "activo": true,
+      "usuario": {
+        "nombre": "María López",
+        "correo": "m.lopez@universidad.edu"
+      }
+    }
+  }
+]
+```
+
+---
+
+## Create a cubicle
+
+<br />
+
+`POST /api/edificios/cubiculos`
+
+Creates a new cubicle and assigns it to a professor in a building. Requires admin authentication.
+
+### Request body
+
+<ParamField body="id_profesor" type="integer" required>
+  ID of the professor to assign to this cubicle.
+</ParamField>
+
+<ParamField body="id_edificio" type="integer" required>
+  ID of the building where the cubicle is located.
+</ParamField>
+
+<ParamField body="numero" type="string" required>
+  Cubicle number or label (e.g., `"C-12"`, `"Oficina 3B"`).
+</ParamField>
+
+<ParamField body="piso" type="integer" required>
+  Floor number. Use `0` for ground floor.
+</ParamField>
+
+<ParamField body="referencia" type="string">
+  Optional location reference to help visitors find the cubicle (e.g., `"Al fondo del pasillo, frente a las escaleras"`).
+</ParamField>
+
+<ParamField body="activo" type="boolean" default="true">
+  Set to `false` to create the cubicle in an inactive state.
+</ParamField>
+
+### Response
+
+Returns the created cubicle with building and professor details, and HTTP `201 Created`.
+
+### Example
+
+```bash
+curl -X POST https://api.example.com/api/edificios/cubiculos \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id_profesor": 3,
+    "id_edificio": 2,
+    "numero": "B-08",
+    "piso": 1,
+    "referencia": "Primera puerta a la derecha después de la recepción",
+    "activo": true
+  }'
+```
+
+```json
+{
+  "id_cubiculo": 9,
+  "id_profesor": 3,
+  "id_edificio": 2,
+  "numero": "B-08",
+  "piso": 1,
+  "referencia": "Primera puerta a la derecha después de la recepción",
+  "activo": true,
+  "edificio": {
+    "id_edificio": 2,
+    "nombre": "Edificio B"
+  },
+  "profesor": {
+    "id_profesor": 3,
+    "departamento": "Química",
+    "activo": true,
+    "usuario": {
+      "nombre": "Ana Torres",
+      "correo": "a.torres@universidad.edu"
+    }
+  }
+}
+```
+
+---
+
+## Update a cubicle
+
+<br />
+
+`PUT /api/edificios/cubiculos/:id`
+
+Replaces the full set of fields on an existing cubicle. All fields are required for this operation. Requires admin authentication.
+
+<Note>
+  This endpoint performs a full replacement, not a partial update. You must supply all fields — including those you do not intend to change — to avoid overwriting them with empty values.
+</Note>
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_cubiculo` of the cubicle to update.
+</ParamField>
+
+### Request body
+
+<ParamField body="id_profesor" type="integer" required>
+  Assigned professor ID. To reassign the cubicle, provide the new professor's ID.
+</ParamField>
+
+<ParamField body="id_edificio" type="integer" required>
+  Building ID. To move the cubicle to another building, provide the new building's ID.
+</ParamField>
+
+<ParamField body="numero" type="string" required>
+  Cubicle number or label.
+</ParamField>
+
+<ParamField body="piso" type="integer" required>
+  Floor number.
+</ParamField>
+
+<ParamField body="referencia" type="string" required>
+  Location reference description. Pass an empty string if not applicable.
+</ParamField>
+
+<ParamField body="activo" type="boolean" required>
+  Active status.
+</ParamField>
+
+### Response
+
+Returns the updated cubicle with building and professor details.
+
+### Example
+
+```bash
+curl -X PUT https://api.example.com/api/edificios/cubiculos/9 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id_profesor": 3,
+    "id_edificio": 2,
+    "numero": "B-08",
+    "piso": 2,
+    "referencia": "Segunda planta, frente al laboratorio de química",
+    "activo": true
+  }'
+```
+
+```json
+{
+  "id_cubiculo": 9,
+  "id_profesor": 3,
+  "id_edificio": 2,
+  "numero": "B-08",
+  "piso": 2,
+  "referencia": "Segunda planta, frente al laboratorio de química",
+  "activo": true,
+  "edificio": {
+    "id_edificio": 2,
+    "nombre": "Edificio B"
+  },
+  "profesor": {
+    "id_profesor": 3,
+    "departamento": "Química",
+    "activo": true,
+    "usuario": {
+      "nombre": "Ana Torres",
+      "correo": "a.torres@universidad.edu"
+    }
+  }
+}
+```
+
+---
+
+## Delete a cubicle
+
+<br />
+
+`DELETE /api/edificios/cubiculos/:id`
+
+Permanently deletes a cubicle record. The associated professor and building records are not affected. Requires admin authentication.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_cubiculo` of the cubicle to delete.
+</ParamField>
+
+### Response
+
+```json
+{
+  "message": "Cubículo eliminado exitosamente"
+}
+```
+
+### Example
+
+```bash
+curl -X DELETE https://api.example.com/api/edificios/cubiculos/9 \
+  -H "Authorization: Bearer <token>"
+```

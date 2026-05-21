@@ -1,0 +1,164 @@
+---
+title: 'Route congestion prediction endpoints'
+description: 'AI-powered congestion prediction for campus routes using a TensorFlow.js neural network trained on historical route usage data by hour.'
+---
+
+AirGuide includes a TensorFlow.js neural network that predicts route congestion based on the current hour and a route's historical usage patterns (`contador_usos`). The model produces a score between 0 and 1 — a score above 0.7 is considered congested. Three endpoints expose this functionality: one for checking a single route, one for generating a full heatmap overlay, and one admin endpoint for retraining the model when usage data has grown significantly.
+
+---
+
+## POST /api/rutas/check-congestion
+
+Predicts whether a specific route is congested at the current hour. No authentication is required.
+
+<Note>
+  A score above `0.7` is classified as congested. The model uses the server's current local hour (0–23) as its primary input alongside learned usage patterns for the route.
+</Note>
+
+### Request body
+
+<ParamField body="id_ruta" type="integer" required>
+  The `id_ruta` of the route to evaluate.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="congested" type="boolean">
+  `true` if the predicted congestion score exceeds 0.7, `false` otherwise.
+</ResponseField>
+
+<ResponseField name="score" type="number">
+  Raw AI prediction score between 0 and 1. Higher values indicate heavier predicted congestion.
+</ResponseField>
+
+<ResponseField name="hour" type="integer">
+  The current hour (0–23) used as input to the model. Useful for debugging or logging.
+</ResponseField>
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `400` | `{ "error": "Falta id_ruta" }` | `id_ruta` was not included in the request body. |
+| `500` | `{ "error": "Error analizando congestión" }` | Model inference failed. |
+
+### Example
+
+```bash
+curl -X POST http://localhost:3001/api/rutas/check-congestion \
+  -H "Content-Type: application/json" \
+  -d '{"id_ruta": 1}'
+```
+
+```json
+{
+  "congested": true,
+  "score": 0.84,
+  "hour": 10
+}
+```
+
+---
+
+## GET /api/rutas/heatmap
+
+Returns congestion scores and waypoint paths for all active internal routes. Intended for rendering a color-coded congestion heatmap overlay on the campus map. No authentication is required.
+
+The server evaluates the AI model for every active `interna` route concurrently using the current hour, then returns the scores alongside each route's waypoints formatted for direct use with mapping libraries.
+
+### Response — 200 OK
+
+Array of objects, one per active internal route.
+
+<ResponseField name="id_ruta" type="integer">
+  Route identifier.
+</ResponseField>
+
+<ResponseField name="score" type="number">
+  AI congestion score between 0 and 1 for this route at the current hour.
+</ResponseField>
+
+<ResponseField name="path" type="object[]">
+  Ordered array of waypoints derived from the route's `RutaDetalle` records.
+  <Expandable title="waypoint properties">
+    <ResponseField name="lat" type="number">
+      Latitude coordinate of the waypoint.
+    </ResponseField>
+    <ResponseField name="lng" type="number">
+      Longitude coordinate of the waypoint.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl http://localhost:3001/api/rutas/heatmap
+```
+
+```json
+[
+  {
+    "id_ruta": 1,
+    "score": 0.84,
+    "path": [
+      { "lat": 19.43260, "lng": -99.13320 },
+      { "lat": 19.43280, "lng": -99.13300 },
+      { "lat": 19.43290, "lng": -99.13285 }
+    ]
+  },
+  {
+    "id_ruta": 4,
+    "score": 0.21,
+    "path": [
+      { "lat": 19.43310, "lng": -99.13350 },
+      { "lat": 19.43330, "lng": -99.13370 }
+    ]
+  }
+]
+```
+
+---
+
+## POST /api/analytics/train-congestion
+
+Triggers retraining of the TensorFlow.js congestion model using all current route usage data. Admin access is required.
+
+<Note>
+  Retrain the model after a significant volume of new route usage data has accumulated — for example, after a new semester begins or after deploying new routes. Retraining on sparse data produces an unreliable model. The returned `loss` value indicates training accuracy; lower is better.
+</Note>
+
+<Warning>
+  Requires a valid admin Bearer token. This endpoint is on the analytics service, not the navigation service.
+</Warning>
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin account: `Bearer <token>`.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="message" type="string">
+  Confirmation string: `"Modelo de congestión entrenado con éxito"`.
+</ResponseField>
+
+<ResponseField name="loss" type="number">
+  Final training loss value. Lower values indicate a better-fitted model.
+</ResponseField>
+
+### Example
+
+```bash
+curl --request POST \
+  --url http://localhost:3001/api/analytics/train-congestion \
+  --header 'Authorization: Bearer <admin-token>'
+```
+
+```json
+{
+  "message": "Modelo de congestión entrenado con éxito",
+  "loss": 0.0412
+}
+```

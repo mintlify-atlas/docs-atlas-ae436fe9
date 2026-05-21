@@ -1,0 +1,93 @@
+---
+title: "Set up the AirGuide PostgreSQL database"
+description: "Initialize and manage the AirGuide PostgreSQL database using Prisma — run migrations, seed sample data, and explore the full schema."
+---
+
+AirGuide uses PostgreSQL as its database and [Prisma ORM](https://www.prisma.io/) to manage the schema, run migrations, and generate a type-safe client. All database tooling is available through npm scripts. You only need to run these commands once during initial setup; after that, you run migrations whenever the schema changes.
+
+## Initial database setup
+
+<Steps>
+  <Step title="Generate the Prisma client">
+    After installing dependencies, generate the Prisma client so all services can import it:
+
+    ```bash
+    npm run prisma:generate
+    ```
+
+    This reads `prisma/schema.prisma` and outputs a typed client to `node_modules/@prisma/client`. Re-run this command whenever you change the schema.
+  </Step>
+
+  <Step title="Run migrations">
+    Apply the schema to your database by running Prisma's dev migration command:
+
+    ```bash
+    npm run prisma:migrate
+    ```
+
+    This creates the migration history in `prisma/migrations/` and applies all pending migrations to the database specified in `DATABASE_URL`.
+  </Step>
+
+  <Step title="Seed the database">
+    Populate the database with initial campus data — buildings, classrooms, cubicles, and sample routes:
+
+    ```bash
+    npm run prisma:seed
+    ```
+
+    To also seed the extended building route data, run:
+
+    ```bash
+    npm run prisma:seed-newbuildings
+    ```
+  </Step>
+</Steps>
+
+## Available database scripts
+
+| Script | Command | Description |
+|--------|---------|-------------|
+| Generate client | `npm run prisma:generate` | Regenerates the Prisma client from the schema |
+| Run migrations | `npm run prisma:migrate` | Applies pending migrations in dev mode |
+| Push schema | `npm run prisma:push` | Pushes schema changes without creating a migration file |
+| Seed data | `npm run prisma:seed` | Seeds campus buildings, rooms, and routes |
+| Seed new buildings | `npm run prisma:seed-newbuildings` | Seeds extended building route data |
+| Open Studio | `npm run prisma:studio` | Launches the Prisma Studio GUI at `http://localhost:5555` |
+
+<Note>
+Use `prisma:push` for rapid prototyping when you want to apply schema changes without generating a migration history. Switch to `prisma:migrate` before deploying to production so you have a reproducible migration trail.
+</Note>
+
+<Tip>
+Prisma Studio gives you a browser-based table editor for every model in your schema. Run `npm run prisma:studio` and open `http://localhost:5555` to browse, filter, and edit rows without writing SQL.
+</Tip>
+
+## Database schema
+
+The schema defines 11 models organized around users, campus locations, navigation, events, and security.
+
+| Model | Table | Description |
+|-------|-------|-------------|
+| `Usuario` | `usuarios` | User accounts with roles (`rector`, `admin`, `profesor`, `alumno`) and approval status |
+| `Edificio` | `edificios` | Campus buildings with geolocation coordinates and type classification |
+| `Salon` | `salones` | Classrooms within a building, tagged by floor and type (aula, laboratorio, auditorio) |
+| `Cubiculo` | `cubiculos` | Professor office cubicles located within a building |
+| `Profesor` | `profesores` | Professor profiles linked one-to-one to a `Usuario` account |
+| `Evento` | `eventos` | Campus events with scheduling metadata used by the AI conflict resolver |
+| `Ruta` | `rutas` | Navigation routes between any two campus locations (buildings, rooms, cubicles, or events) |
+| `RutaDetalle` | `ruta_detalle` | Ordered waypoints for each route, each with lat/lon and a navigation instruction |
+| `LogAcceso` | `logs_acceso` | Login access log entries recording IP and device per user session |
+| `CodigoOtp` | `codigos_otp` | Time-limited OTP codes issued during the two-factor authentication flow |
+| `CaminoGeografico` | `caminos_geograficos` | Walkable paths (footways, steps) imported from OpenStreetMap via Overpass Turbo |
+
+### Model highlights
+
+**`usuarios`** — Every user has a role and an `estado` field (`pendiente`, `activo`, `rechazado`). New accounts start as `pendiente` and require admin approval before they can log in.
+
+**`edificios`** — Stores `latitud` and `longitud` as `Decimal(10,8)` / `Decimal(11,8)` for precise geolocation. Buildings are typed as `academico`, `administrativo`, or `recreativo`.
+
+**`rutas` / `ruta_detalle`** — A route connects any origin type to any destination type using `TipoOrigen` and `TipoDestino` enums. Waypoints in `ruta_detalle` are ordered by an `orden` field and carry both coordinates and a text instruction.
+
+**`eventos`** — Includes `prioridad_evento`, `total_invitados`, and `asistentes_confirmados` fields used by the TensorFlow.js scheduling model to evaluate and resolve time conflicts.
+
+**`caminos_geograficos`** — Stores the GeoJSON `LineString` geometry for campus footpaths as a `Json` field, enabling the map endpoint to return a combined GeoJSON feature collection.

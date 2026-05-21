@@ -1,0 +1,71 @@
+---
+title: 'Log in and request an OTP code'
+description: 'Step 1 of the AirGuide login flow — submit your email and password to trigger a one-time password sent to your registered email address.'
+---
+
+Logging in to AirGuide is a two-step process. In step 1, you submit your credentials to `POST /api/auth/login`. If your email and password are correct and your account is active, the server sends a 6-digit OTP to your registered email. You then proceed to [step 2 — verify the OTP](/auth/two-factor) to receive a JWT token.
+
+## Endpoint
+
+```
+POST /api/auth/login
+```
+
+## Request body
+
+<ParamField body="correo" type="string" required>
+  Your registered email address.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Your account password.
+</ParamField>
+
+## Response
+
+A `200 OK` response indicating that an OTP has been dispatched:
+
+<ResponseField name="requiresTwoFactor" type="boolean">
+  Always `true`. Proceed to `/api/auth/verify-2fa` with the OTP from your email.
+</ResponseField>
+
+<ResponseField name="correo" type="string">
+  The email address the OTP was sent to. Use this value when calling `/api/auth/verify-2fa`.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  `"Código de verificación enviado a tu correo electrónico."`
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```bash Request
+curl -X POST https://your-api.example.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "correo": "estudiante@universidad.edu",
+    "password": "MySecurePassword1!"
+  }'
+```
+
+```json Response
+{
+  "requiresTwoFactor": true,
+  "correo": "estudiante@universidad.edu",
+  "message": "Código de verificación enviado a tu correo electrónico."
+}
+```
+
+</CodeGroup>
+
+<Warning>
+  Your account must have `estado: "activo"` to log in. Accounts that are still `"pendiente"` (awaiting admin approval) or `"rechazado"` receive a `403 Forbidden` response with the message `"Tu cuenta aún no ha sido validada. Por favor contacta al administrador."` Contact your administrator to activate your account.
+</Warning>
+
+## What to do next
+
+Check your inbox for a 6-digit OTP code and proceed to `POST /api/auth/verify-2fa`. Pass the `correo` value from this response along with the `codigo` from your email to complete login and receive your JWT token.
+
+See [Verify 2FA OTP and receive a JWT token](/auth/two-factor) for the next step.

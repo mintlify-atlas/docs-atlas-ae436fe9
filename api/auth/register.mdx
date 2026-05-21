@@ -1,0 +1,164 @@
+---
+title: 'POST /api/auth/register — create a new account'
+description: 'Create a new AirGuide user account. Accounts are assigned the alumno role and require admin approval before the user can complete the login flow.'
+---
+
+New accounts are not immediately active. After a successful registration the account `estado` is set to `pendiente`, and an administrator must approve it before the user can complete the [login flow](/api/auth/login). This page also documents `GET /api/auth/me`, which returns the profile of the currently authenticated user.
+
+---
+
+## POST /api/auth/register
+
+Creates a new user record with the `alumno` role. Both `correo` and `matricula` must be unique across all existing accounts.
+
+### Request body
+
+<ParamField body="correo" type="string" required>
+  Email address for the new account. Must not already be registered.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Password for the account. Stored as a bcrypt hash; never persisted in plain text.
+</ParamField>
+
+<ParamField body="nombre" type="string" required>
+  Full name of the user.
+</ParamField>
+
+<ParamField body="matricula" type="string">
+  Student ID number. Optional, but must be unique if provided. Defaults to an empty string when omitted.
+</ParamField>
+
+### Response — 201 Created
+
+<ResponseField name="message" type="string">
+  Confirmation string: `"Registro exitoso. Tu cuenta está pendiente de validación por un administrador."`
+</ResponseField>
+
+<ResponseField name="usuario" type="object">
+  The newly created user record.
+
+  <Expandable title="usuario properties">
+    <ResponseField name="id" type="number">
+      Internal numeric identifier assigned to the new account.
+    </ResponseField>
+    <ResponseField name="correo" type="string">
+      Registered email address.
+    </ResponseField>
+    <ResponseField name="nombre" type="string">
+      Full name as provided at registration.
+    </ResponseField>
+    <ResponseField name="matricula" type="string">
+      Student ID as provided, or an empty string if not supplied.
+    </ResponseField>
+    <ResponseField name="rol" type="string">
+      Always `"alumno"` for self-registered accounts.
+    </ResponseField>
+    <ResponseField name="estado" type="string">
+      Always `"pendiente"` immediately after registration.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `400` | `{ "error": "El correo ya está registrado" }` | An account with the same `correo` already exists. |
+| `400` | `{ "error": "La matrícula ya está registrada" }` | An account with the same `matricula` already exists. |
+| `400` | `{ "error": "<validation message>" }` | Zod schema validation failed (e.g. missing required field). |
+
+<Note>
+  After registration, the user cannot log in until an administrator changes the account `estado` to `activo` using [PUT /api/auth/validate/:id](/api/auth/users). Direct the user to contact their institution's administrator to request approval.
+</Note>
+
+### Example
+
+```bash
+curl --request POST \
+  --url https://api.example.com/api/auth/register \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "correo": "nuevo@ejemplo.edu.mx",
+    "password": "s3cur3P@ss",
+    "nombre": "María López",
+    "matricula": "A00198765"
+  }'
+```
+
+```json
+{
+  "message": "Registro exitoso. Tu cuenta está pendiente de validación por un administrador.",
+  "usuario": {
+    "id": 87,
+    "correo": "nuevo@ejemplo.edu.mx",
+    "nombre": "María López",
+    "matricula": "A00198765",
+    "rol": "alumno",
+    "estado": "pendiente"
+  }
+}
+```
+
+---
+
+## GET /api/auth/me
+
+Returns the full profile of the currently authenticated user. Use this endpoint to retrieve up-to-date account details after login or to verify the token is still valid.
+
+**Authentication required:** `Authorization: Bearer <token>`
+
+### Response — 200 OK
+
+<ResponseField name="id_usuario" type="number">
+  Internal numeric user identifier.
+</ResponseField>
+
+<ResponseField name="correo" type="string">
+  User's registered email address.
+</ResponseField>
+
+<ResponseField name="nombre" type="string">
+  User's full name.
+</ResponseField>
+
+<ResponseField name="matricula" type="string">
+  Student ID number, or empty string if not set.
+</ResponseField>
+
+<ResponseField name="rol" type="string">
+  Role assigned to the account: `rector`, `admin`, `profesor`, or `alumno`.
+</ResponseField>
+
+<ResponseField name="estado" type="string">
+  Current account status: `activo`, `pendiente`, or `rechazado`.
+</ResponseField>
+
+<ResponseField name="fecha_registro" type="string">
+  ISO 8601 timestamp of when the account was created.
+</ResponseField>
+
+<ResponseField name="fecha_validacion" type="string">
+  ISO 8601 timestamp of when the account was last validated by an administrator. May be `null` if not yet validated.
+</ResponseField>
+
+### Example
+
+```bash
+curl --request GET \
+  --url https://api.example.com/api/auth/me \
+  --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+```
+
+```json
+{
+  "id_usuario": 42,
+  "correo": "alumno@ejemplo.edu.mx",
+  "nombre": "Juan Pérez",
+  "matricula": "A00123456",
+  "rol": "alumno",
+  "estado": "activo",
+  "fecha_registro": "2024-08-15T10:30:00.000Z",
+  "fecha_validacion": "2024-08-16T09:00:00.000Z"
+}
+```

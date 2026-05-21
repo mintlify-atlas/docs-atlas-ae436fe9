@@ -1,0 +1,84 @@
+---
+title: 'Authentication in AirGuide'
+description: 'AirGuide uses a two-step JWT flow: log in with credentials to receive an OTP, verify it to get a Bearer token, then include the token in every request.'
+---
+
+AirGuide's authentication system protects all API routes with JSON Web Tokens (JWT). Every account goes through an admin-approval step before it can log in, and every login requires a two-factor OTP verification before a token is issued. This page explains how accounts work, what roles exist, and how to move through the full flow.
+
+## Bearer token usage
+
+After completing the two-factor verification, you receive a JWT token. Include it in the `Authorization` header of every protected request:
+
+```bash
+curl https://your-api.example.com/api/some-endpoint \
+  -H "Authorization: Bearer <your_token>"
+```
+
+The middleware rejects requests without a valid token with `401 Unauthorized`.
+
+## Account states
+
+New accounts start in the `pendiente` state. An admin must approve each account before it can log in.
+
+| State | Description |
+|---|---|
+| `pendiente` | Registered but not yet approved by an admin. |
+| `activo` | Approved — can log in and receive a JWT. |
+| `rechazado` | Rejected by an admin. Login is blocked. |
+
+<Warning>
+  Accounts with `estado: "pendiente"` or `estado: "rechazado"` receive a `403` response on login. Contact an admin to get your account activated.
+</Warning>
+
+## Roles
+
+The middleware exposes four roles on every authenticated request:
+
+| Role | Description |
+|---|---|
+| `alumno` | Default role assigned on registration. |
+| `profesor` | Faculty member. |
+| `rector` | Rector-level access. |
+| `admin` | Full administrative access — can approve accounts, list all users, and manage the platform. |
+
+Only users with the `admin` role can access endpoints protected by the `requireAdmin` middleware (for example, `GET /api/auth/pending` and `PUT /api/auth/validate/:id`).
+
+## Full authentication flow
+
+<Steps>
+  <Step title="Register">
+    Send `POST /api/auth/register` with your email, password, full name, and optional student ID. Your account is created with `estado: "pendiente"` and `rol: "alumno"`.
+  </Step>
+  <Step title="Wait for admin approval">
+    An admin reviews your account and calls `PUT /api/auth/validate/:id` to set your `estado` to `activo`. You cannot log in until this step is complete.
+  </Step>
+  <Step title="Log in and request an OTP">
+    Send `POST /api/auth/login` with your email and password. If your credentials are valid and your account is active, a 6-digit OTP is sent to your email address.
+  </Step>
+  <Step title="Verify the OTP">
+    Send `POST /api/auth/verify-2fa` with your email and the OTP code. The code is single-use and expires after a short window.
+  </Step>
+  <Step title="Receive a JWT token">
+    On successful OTP verification, the response includes a `token` string and your user object. The token is a signed JWT Bearer token.
+  </Step>
+  <Step title="Use the JWT in requests">
+    Include the token in the `Authorization: Bearer <token>` header on every subsequent request to protected endpoints.
+  </Step>
+</Steps>
+
+## Explore the auth endpoints
+
+<CardGroup cols={2}>
+  <Card title="Register" icon="user-plus" href="/auth/register">
+    Create a new AirGuide account.
+  </Card>
+  <Card title="Login" icon="arrow-right-to-bracket" href="/auth/login">
+    Step 1 — submit credentials and receive an OTP.
+  </Card>
+  <Card title="Two-factor verification" icon="shield-check" href="/auth/two-factor">
+    Step 2 — verify your OTP and receive a JWT.
+  </Card>
+  <Card title="Password reset" icon="key" href="/auth/password-reset">
+    Reset your password via a one-time email code.
+  </Card>
+</CardGroup>

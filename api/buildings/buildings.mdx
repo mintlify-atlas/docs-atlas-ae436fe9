@@ -1,0 +1,369 @@
+---
+title: 'Campus buildings endpoints'
+description: 'Manage and query campus building records including location coordinates, type classification, and counts of rooms, cubicles, and events.'
+---
+
+The buildings resource (`/api/edificios`) lets you list, inspect, create, update, and delete campus buildings. Each building has GPS coordinates, a type classification, and aggregated counts of its associated rooms, cubicles, and events. Read operations are public; write operations require an authenticated admin token.
+
+<Warning>
+  `POST`, `PUT`, and `DELETE` requests require a valid Bearer token from an account with the `admin` role. Requests without a valid token will be rejected with `401 Unauthorized`.
+</Warning>
+
+---
+
+## List all buildings
+
+<br />
+
+`GET /api/edificios`
+
+Returns all buildings ordered alphabetically by name. Use the optional query parameters to filter by type or active status.
+
+### Query parameters
+
+<ParamField query="tipo" type="string">
+  Filter by building category. Accepted values: `academico`, `administrativo`, `recreativo`.
+</ParamField>
+
+<ParamField query="activo" type="string">
+  Filter by active status. Pass `"true"` to return only active buildings or `"false"` to return inactive ones.
+</ParamField>
+
+### Response
+
+Returns an array of building objects. Each object includes a `_count` field with counts for associated `salones`, `cubiculos`, and `eventos`.
+
+<ResponseField name="id_edificio" type="integer">
+  Auto-incremented primary key.
+</ResponseField>
+
+<ResponseField name="nombre" type="string">
+  Building name.
+</ResponseField>
+
+<ResponseField name="descripcion" type="string | null">
+  Optional description text.
+</ResponseField>
+
+<ResponseField name="latitud" type="string">
+  Latitude coordinate stored as `decimal(10,8)`, returned as a string.
+</ResponseField>
+
+<ResponseField name="longitud" type="string">
+  Longitude coordinate stored as `decimal(11,8)`, returned as a string.
+</ResponseField>
+
+<ResponseField name="tipo" type="string">
+  Building type: `academico`, `administrativo`, or `recreativo`.
+</ResponseField>
+
+<ResponseField name="activo" type="boolean">
+  Whether the building is active.
+</ResponseField>
+
+<ResponseField name="_count" type="object">
+  <Expandable title="properties">
+    <ResponseField name="salones" type="integer">
+      Total number of rooms in this building.
+    </ResponseField>
+    <ResponseField name="cubiculos" type="integer">
+      Total number of cubicles in this building.
+    </ResponseField>
+    <ResponseField name="eventos" type="integer">
+      Total number of events associated with this building.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Examples
+
+<Tabs>
+  <Tab title="All buildings">
+    ```bash
+    curl https://api.example.com/api/edificios
+    ```
+  </Tab>
+  <Tab title="Filter by type">
+    ```bash
+    curl "https://api.example.com/api/edificios?tipo=academico"
+    ```
+  </Tab>
+  <Tab title="Active only">
+    ```bash
+    curl "https://api.example.com/api/edificios?activo=true"
+    ```
+  </Tab>
+  <Tab title="Combined filters">
+    ```bash
+    curl "https://api.example.com/api/edificios?tipo=administrativo&activo=true"
+    ```
+  </Tab>
+</Tabs>
+
+```json
+[
+  {
+    "id_edificio": 1,
+    "nombre": "Edificio A",
+    "descripcion": "Facultad de Ingeniería",
+    "latitud": "19.43200000",
+    "longitud": "-99.13300000",
+    "tipo": "academico",
+    "activo": true,
+    "_count": {
+      "salones": 12,
+      "cubiculos": 5,
+      "eventos": 2
+    }
+  }
+]
+```
+
+---
+
+## Get a building by ID
+
+<br />
+
+`GET /api/edificios/:id`
+
+Returns a single building with its full nested detail: active rooms ordered by floor, active cubicles with their assigned professor, and upcoming active events ordered by start date.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_edificio` of the building to retrieve.
+</ParamField>
+
+### Response
+
+Returns the building object with nested `salones`, `cubiculos`, and `eventos` arrays.
+
+<ResponseField name="salones" type="object[]">
+  <Expandable title="properties">
+    <ResponseField name="id_salon" type="integer">Room ID.</ResponseField>
+    <ResponseField name="nombre" type="string">Room name.</ResponseField>
+    <ResponseField name="piso" type="integer">Floor number.</ResponseField>
+    <ResponseField name="tipo" type="string">Room type: `aula`, `laboratorio`, or `auditorio`.</ResponseField>
+    <ResponseField name="activo" type="boolean">Active status.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="cubiculos" type="object[]">
+  <Expandable title="properties">
+    <ResponseField name="id_cubiculo" type="integer">Cubicle ID.</ResponseField>
+    <ResponseField name="numero" type="string">Cubicle number/label.</ResponseField>
+    <ResponseField name="piso" type="integer">Floor number.</ResponseField>
+    <ResponseField name="referencia" type="string | null">Location reference description.</ResponseField>
+    <ResponseField name="profesor" type="object">
+      <Expandable title="properties">
+        <ResponseField name="id_profesor" type="integer">Professor ID.</ResponseField>
+        <ResponseField name="departamento" type="string">Department name.</ResponseField>
+        <ResponseField name="activo" type="boolean">Active status.</ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="eventos" type="object[]">
+  Only upcoming events (`fecha_inicio >= now`) are returned, ordered by start date ascending.
+</ResponseField>
+
+Returns `404` with `{ "error": "Edificio no encontrado" }` if no building with the given ID exists.
+
+### Example
+
+```bash
+curl https://api.example.com/api/edificios/1
+```
+
+```json
+{
+  "id_edificio": 1,
+  "nombre": "Edificio A",
+  "descripcion": "Facultad de Ingeniería",
+  "latitud": "19.43200000",
+  "longitud": "-99.13300000",
+  "tipo": "academico",
+  "activo": true,
+  "salones": [
+    {
+      "id_salon": 3,
+      "id_edificio": 1,
+      "nombre": "Aula 101",
+      "piso": 1,
+      "tipo": "aula",
+      "activo": true
+    }
+  ],
+  "cubiculos": [
+    {
+      "id_cubiculo": 2,
+      "numero": "C-05",
+      "piso": 2,
+      "referencia": "Junto al elevador",
+      "activo": true,
+      "profesor": {
+        "id_profesor": 4,
+        "departamento": "Sistemas",
+        "activo": true
+      }
+    }
+  ],
+  "eventos": []
+}
+```
+
+---
+
+## Create a building
+
+<br />
+
+`POST /api/edificios`
+
+Creates a new building record. Requires admin authentication.
+
+### Request body
+
+<ParamField body="nombre" type="string" required>
+  Building name.
+</ParamField>
+
+<ParamField body="descripcion" type="string">
+  Optional description text.
+</ParamField>
+
+<ParamField body="latitud" type="number" required>
+  Latitude coordinate. Stored with up to 8 decimal places (`decimal(10,8)`).
+</ParamField>
+
+<ParamField body="longitud" type="number" required>
+  Longitude coordinate. Stored with up to 8 decimal places (`decimal(11,8)`).
+</ParamField>
+
+<ParamField body="tipo" type="string" required>
+  Building category. One of: `academico`, `administrativo`, `recreativo`.
+</ParamField>
+
+<ParamField body="activo" type="boolean" default="true">
+  Set to `false` to create the building in an inactive state.
+</ParamField>
+
+### Response
+
+Returns the created building object with HTTP `201 Created`.
+
+### Example
+
+```bash
+curl -X POST https://api.example.com/api/edificios \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Centro de Innovación",
+    "descripcion": "Hub tecnológico del campus",
+    "latitud": 19.43251234,
+    "longitud": -99.13312345,
+    "tipo": "academico",
+    "activo": true
+  }'
+```
+
+```json
+{
+  "id_edificio": 5,
+  "nombre": "Centro de Innovación",
+  "descripcion": "Hub tecnológico del campus",
+  "latitud": "19.43251234",
+  "longitud": "-99.13312345",
+  "tipo": "academico",
+  "activo": true
+}
+```
+
+---
+
+## Update a building
+
+<br />
+
+`PUT /api/edificios/:id`
+
+Updates an existing building. All body fields are optional; only the fields you include will be changed. Requires admin authentication.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_edificio` of the building to update.
+</ParamField>
+
+### Request body
+
+All fields are optional for partial updates.
+
+<ParamField body="nombre" type="string">Building name.</ParamField>
+<ParamField body="descripcion" type="string">Description text.</ParamField>
+<ParamField body="latitud" type="number">Latitude coordinate.</ParamField>
+<ParamField body="longitud" type="number">Longitude coordinate.</ParamField>
+<ParamField body="tipo" type="string">Building type: `academico`, `administrativo`, or `recreativo`.</ParamField>
+<ParamField body="activo" type="boolean">Active status.</ParamField>
+
+### Response
+
+Returns the updated building object. Returns `404` if no building with the given ID exists.
+
+### Example
+
+```bash
+curl -X PUT https://api.example.com/api/edificios/5 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "descripcion": "Hub tecnológico y laboratorios de investigación",
+    "activo": false
+  }'
+```
+
+```json
+{
+  "id_edificio": 5,
+  "nombre": "Centro de Innovación",
+  "descripcion": "Hub tecnológico y laboratorios de investigación",
+  "latitud": "19.43251234",
+  "longitud": "-99.13312345",
+  "tipo": "academico",
+  "activo": false
+}
+```
+
+---
+
+## Delete a building
+
+<br />
+
+`DELETE /api/edificios/:id`
+
+Permanently deletes a building. All associated rooms, cubicles, and events are also deleted via cascade. Requires admin authentication.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_edificio` of the building to delete.
+</ParamField>
+
+### Response
+
+```json
+{
+  "message": "Edificio eliminado"
+}
+```
+
+### Example
+
+```bash
+curl -X DELETE https://api.example.com/api/edificios/5 \
+  -H "Authorization: Bearer <token>"
+```

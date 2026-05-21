@@ -1,0 +1,109 @@
+---
+title: "AirGuide microservices architecture overview"
+description: "Learn how AirGuide's API Gateway, five domain microservices, shared PostgreSQL database, and TensorFlow.js AI models are organized and communicate."
+---
+
+AirGuide Backend is built as a collection of independent microservices, each owning a single domain. An API Gateway running on port 3001 is the single entry point for all clients. It authenticates and forwards requests to the appropriate service over localhost, keeping each service isolated and independently deployable.
+
+## API Gateway
+
+The gateway (`src/gateway/index.ts`) is an Express application that proxies every `/api/*` path to an internal service. Clients never communicate with individual services directly. The gateway also handles CORS, serves the compiled frontend static files in production, and exposes a `/health` endpoint.
+
+### Port mapping
+
+| Service | Internal port | Gateway path(s) |
+|---|---|---|
+| Auth Service | 3011 | `/api/auth` |
+| Buildings Service | 3012 | `/api/edificios`, `/api/profesores` |
+| Events Service | 3013 | `/api/eventos` |
+| Navigation Service | 3014 | `/api/rutas`, `/api/mapa`, `/api/google` |
+| Analytics Service | 3015 | `/api/analytics` |
+
+<Tip>
+  In development all six processes (gateway + 5 services) start together with `npm run dev`, which uses `concurrently` to run each `tsx watch` process in parallel.
+</Tip>
+
+## Services
+
+<CardGroup cols={2}>
+  <Card title="API Gateway" icon="network-wired">
+    Runs on port 3001. Handles CORS, request logging, static file serving, and HTTP proxying to all downstream services. The single public interface for every client.
+  </Card>
+
+  <Card title="Auth Service" icon="lock">
+    Runs on port 3011 (`/api/auth`). Manages user registration, login with two-factor OTP verification, JWT issuance, password reset, and administrator account validation. Passwords are hashed with bcrypt; tokens are signed with HS256.
+  </Card>
+
+  <Card title="Buildings Service" icon="building">
+    Runs on port 3012 (`/api/edificios`, `/api/profesores`). Provides CRUD operations for campus buildings (`Edificio`), rooms (`Salon`), cubicles (`Cubiculo`), and professor profiles (`Profesor`).
+  </Card>
+
+  <Card title="Events Service" icon="calendar">
+    Runs on port 3013 (`/api/eventos`). Manages academic and campus events (`Evento`). Uses the `eventoNeurona` TensorFlow.js model to predict ideal venue assignment and detect scheduling conflicts based on historical data.
+  </Card>
+
+  <Card title="Navigation Service" icon="map">
+    Runs on port 3014 (`/api/rutas`, `/api/mapa`, `/api/google`). Stores and serves campus routes (`Ruta`, `RutaDetalle`) and geographic walkway data (`CaminoGeografico`). Integrates with Google Maps and uses the `congestionNeurona` model to predict route congestion in real time.
+  </Card>
+
+  <Card title="Analytics Service" icon="chart-bar">
+    Runs on port 3015 (`/api/analytics`). Aggregates access logs (`LogAcceso`) and route usage counters to produce usage reports and dashboards for administrators.
+  </Card>
+</CardGroup>
+
+## Database schema
+
+All services share a single PostgreSQL database accessed through Prisma ORM. The schema is defined in `prisma/schema.prisma`.
+
+### Core models
+
+| Model | Table | Description |
+|---|---|---|
+| `Usuario` | `usuarios` | System users with roles (`rector`, `admin`, `profesor`, `alumno`) and states (`pendiente`, `activo`, `rechazado`). |
+| `Edificio` | `edificios` | Campus buildings with GPS coordinates and type (`academico`, `administrativo`, `recreativo`). |
+| `Salon` | `salones` | Rooms inside a building — classrooms, labs, or auditoriums — identified by floor and type. |
+| `Cubiculo` | `cubiculos` | Individual faculty cubicles, each linked to a professor and a building. |
+| `Profesor` | `profesores` | Professor profiles, extending `Usuario` with department information. |
+| `Evento` | `eventos` | Campus events with start/end times, capacity, confirmed attendees, and creator priority. |
+| `Ruta` | `rutas` | Navigation routes between campus locations, with usage counters and estimated travel time. |
+| `RutaDetalle` | `ruta_detalle` | Ordered step-by-step waypoints (instruction + coordinates) belonging to a `Ruta`. |
+| `LogAcceso` | `logs_acceso` | Access log entry per login, capturing IP address and user-agent string. |
+| `CodigoOtp` | `codigos_otp` | Time-limited one-time passwords used in the two-factor authentication flow. |
+| `CaminoGeografico` | `caminos_geograficos` | Geographic walkway segments (footway, path, steps) imported from Overpass Turbo, stored as GeoJSON LineStrings. |
+
+<Note>
+  User accounts default to `estado: "pendiente"` at registration. An administrator must explicitly approve each account by calling `PUT /api/auth/validate/:id` before the user can log in.
+</Note>
+
+### User roles and permissions
+
+| Role | Description |
+|---|---|
+| `alumno` | Can view routes, buildings, and public events. |
+| `profesor` | Same as `alumno`, plus access to their own cubicle information. |
+| `admin` | Full CRUD for all resources plus access to analytics and user validation. |
+| `rector` | Highest-priority role; events created by a rector carry maximum scheduling priority. |
+
+## AI components
+
+Two TensorFlow.js neural networks run in-process within their respective services.
+
+### Event conflict resolution (`eventoNeurona`)
+
+Located in `src/lib/eventoNeurona.ts`, this sequential neural network is trained on existing event data at startup. When a higher-priority event conflicts with a lower-priority one, the model takes the hour of day as input and predicts the best alternative building to move the lower-priority event to, freeing the original venue. The conflict detection itself is priority-based; the AI assists with the venue reassignment. Retrain it on demand via `POST /api/eventos/entrenar-neurona`.
+
+### Route congestion prediction (`congestionNeurona`)
+
+Located in `src/lib/congestionNeurona.ts`, this three-layer network takes three inputs — normalized hour of day, peak-hour flag, and historical usage rate — and outputs a congestion risk score between 0 and 1. The navigation service uses this score to recommend lower-traffic routes during busy periods.
+
+```typescript
+// Input shape: [normalizedHour, isPeak, historicalUsage]
+// Output: congestion risk in [0, 1]
+model.add(tf.layers.dense({ units: 16, inputShape: [3], activation: 'relu' }));
+model.add(tf.layers.dense({ units: 8, activation: 'relu' }));
+model.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+```
+
+<Tip>
+  Both models are loaded lazily — they initialize and train on first use, so there is no cold-start penalty at server boot.
+</Tip>

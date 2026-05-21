@@ -1,0 +1,121 @@
+---
+title: "Deploy AirGuide to production"
+description: "Build and run all six AirGuide microservices in production mode, configure environment variables, and verify the deployment with the health check endpoint."
+---
+
+AirGuide runs as six independent Node.js processes managed together by [concurrently](https://github.com/open-cli-tools/concurrently). In development, each process uses `tsx watch` for hot reload. In production, you compile TypeScript to JavaScript first, then start the compiled output. This page covers what you need to do to go from a fresh clone to a running production deployment.
+
+## Development vs production
+
+| | Development | Production |
+|---|---|---|
+| Command | `npm run dev` | `npm run build && npm start` |
+| Runtime | `tsx watch` (TypeScript, hot reload) | `node` (compiled JavaScript) |
+| Source | `src/` | `dist/` |
+| `NODE_ENV` | `development` | `production` |
+| Error detail in responses | Verbose | Suppressed |
+
+## Production deployment
+
+<Steps>
+  <Step title="Set environment variables">
+    Configure your `.env` file (or your hosting platform's environment variable settings) with production values:
+
+    ```env
+    NODE_ENV="production"
+    DATABASE_URL="postgres://<user>:<password>@<host>:5432/<db>?sslmode=require"
+    API_URL="https://api.yourdomain.com/api"
+    API_KEY="<your-google-api-key>"
+    JWT_SECRET="<long-random-secret>"
+    JWT_EXPIRES_IN="1d"
+    CORS_ORIGIN="https://app.yourdomain.com"
+    SMTP_HOST="smtp.gmail.com"
+    SMTP_PORT="587"
+    SMTP_SECURE="false"
+    SMTP_USER="no-reply@yourdomain.com"
+    SMTP_PASS="<app-password>"
+    SMTP_FROM="AirGuide <no-reply@yourdomain.com>"
+    ```
+
+    <Warning>
+      Always set a unique, randomly generated `JWT_SECRET` in production. The example value in the README is public and must not be used in any real deployment. Tokens signed with a known secret can be forged.
+    </Warning>
+
+    Set `CORS_ORIGIN` to your deployed frontend domain. Any browser request from a different origin will be rejected by the gateway.
+  </Step>
+
+  <Step title="Build the TypeScript source">
+    Compile all services to JavaScript:
+
+    ```bash
+    npm run build
+    ```
+
+    This runs `tsc` using the project's `tsconfig.json` and outputs compiled files to the `dist/` directory, preserving the same folder structure as `src/`.
+  </Step>
+
+  <Step title="Run database migrations">
+    Before starting the services, make sure your production database is up to date:
+
+    ```bash
+    npm run prisma:migrate
+    ```
+
+    If you're deploying to an environment where `prisma migrate dev` is not available (e.g. a locked-down CI pipeline), use `npx prisma migrate deploy` instead — it applies pending migrations without prompting.
+  </Step>
+
+  <Step title="Start all services">
+    Launch all six services concurrently:
+
+    ```bash
+    npm start
+    ```
+
+    `concurrently` starts each compiled entry point as a separate process and streams all logs to stdout with color-coded prefixes. The gateway is available at `http://localhost:3001` once all processes are running.
+  </Step>
+</Steps>
+
+## Service processes and ports
+
+The `npm start` command runs all six processes simultaneously:
+
+| Process | Entry point | Port |
+|---------|------------|------|
+| API Gateway | `dist/gateway/index.js` | 3001 |
+| Auth Service | `dist/services/auth-service/index.js` | 3011 |
+| Buildings Service | `dist/services/buildings-service/index.js` | 3012 |
+| Events Service | `dist/services/events-service/index.js` | 3013 |
+| Navigation Service | `dist/services/navigation-service/index.js` | 3014 |
+| Analytics Service | `dist/services/analytics-service/index.js` | 3015 |
+
+All client traffic should go through the API Gateway on port `3001`. The individual service ports are available for direct access during development and debugging, but you should not expose them publicly in production.
+
+## Health check
+
+<Note>
+The API Gateway exposes a health check endpoint you can use with load balancers and uptime monitors:
+
+```
+GET /health
+```
+
+A successful response looks like:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-05-21T00:00:00.000Z",
+  "service": "API Gateway"
+}
+```
+
+Use this endpoint to confirm the gateway started correctly after deployment.
+</Note>
+
+## npm script reference
+
+| Script | Command | Description |
+|--------|---------|-------------|
+| Development | `npm run dev` | Starts all services with `tsx watch` and hot reload |
+| Build | `npm run build` | Compiles TypeScript source to `dist/` |
+| Production start | `npm start` | Runs all compiled services with `concurrently` |

@@ -1,0 +1,146 @@
+---
+title: 'Verify 2FA OTP and receive a JWT token'
+description: 'Complete step 2 of the AirGuide login flow — submit your email and the 6-digit OTP from your inbox to receive a signed JWT Bearer token for API access.'
+---
+
+This is step 2 of the AirGuide login flow. After calling `POST /api/auth/login` and receiving an OTP in your email, submit that code here to complete authentication. On success, you receive a signed JWT token to use on all subsequent requests. If you did not receive the code or it expired, use the resend endpoint described below.
+
+## Verify your OTP
+
+### Endpoint
+
+```
+POST /api/auth/verify-2fa
+```
+
+### Request body
+
+<ParamField body="correo" type="string" required>
+  Your registered email address. Use the `correo` value returned by `POST /api/auth/login`.
+</ParamField>
+
+<ParamField body="codigo" type="string" required>
+  The 6-digit OTP code delivered to your email. Codes are single-use and expire after a short window.
+</ParamField>
+
+### Response
+
+<ResponseField name="token" type="string">
+  A signed JWT Bearer token. Include this in the `Authorization` header of every protected request.
+</ResponseField>
+
+<ResponseField name="usuario" type="object">
+  The authenticated user record.
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Unique numeric identifier for the user.
+    </ResponseField>
+    <ResponseField name="correo" type="string">
+      The user's email address.
+    </ResponseField>
+    <ResponseField name="nombre" type="string">
+      The user's full name.
+    </ResponseField>
+    <ResponseField name="matricula" type="string">
+      The user's student ID.
+    </ResponseField>
+    <ResponseField name="rol" type="string">
+      The user's role: `alumno`, `profesor`, `rector`, or `admin`.
+    </ResponseField>
+    <ResponseField name="prioridad" type="number">
+      Numeric priority level associated with the user's role.
+    </ResponseField>
+    <ResponseField name="estado" type="string">
+      Account state — `activo` for a successfully authenticated user.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```bash Request
+curl -X POST https://your-api.example.com/api/auth/verify-2fa \
+  -H "Content-Type: application/json" \
+  -d '{
+    "correo": "estudiante@universidad.edu",
+    "codigo": "847291"
+  }'
+```
+
+```json Response
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "usuario": {
+    "id": 42,
+    "correo": "estudiante@universidad.edu",
+    "nombre": "María García",
+    "matricula": "A12345678",
+    "rol": "alumno",
+    "prioridad": 4,
+    "estado": "activo"
+  }
+}
+```
+
+</CodeGroup>
+
+## Using the token
+
+Include the token in the `Authorization` header of every request to a protected endpoint:
+
+```bash
+curl https://your-api.example.com/api/some-endpoint \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+Requests without a valid token receive `401 Unauthorized`. Requests to admin-only endpoints with a non-admin token receive `403 Forbidden`.
+
+---
+
+## Resend an OTP
+
+If your code expired or you did not receive it, request a fresh OTP without going back through the login step.
+
+### Endpoint
+
+```
+POST /api/auth/resend-otp
+```
+
+### Request body
+
+<ParamField body="correo" type="string" required>
+  Your registered email address.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  A confirmation string. Returns `"Nuevo código enviado a tu correo electrónico."` on success. Returns `"Si el correo existe, recibirás un nuevo código."` if the account is not found or not active — this prevents email enumeration.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```bash Request
+curl -X POST https://your-api.example.com/api/auth/resend-otp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "correo": "estudiante@universidad.edu"
+  }'
+```
+
+```json Response
+{
+  "message": "Nuevo código enviado a tu correo electrónico."
+}
+```
+
+</CodeGroup>
+
+<Note>
+  Resending a code invalidates all previous unused OTPs for your account. Only the most recently issued code is valid.
+</Note>

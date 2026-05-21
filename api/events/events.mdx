@@ -1,0 +1,309 @@
+---
+title: 'Campus events CRUD endpoints'
+description: 'Create, read, update, and delete campus events. Write operations require admin credentials and run AI-based scheduling conflict detection.'
+---
+
+The events API lets you list and inspect campus events without authentication, and manage them (create, update, delete) with an admin Bearer token. Before persisting a new or updated event, the system runs a TensorFlow.js neural network that evaluates scheduling conflicts against existing events at the same building. Depending on the outcome, the request may be accepted, accepted after displacing lower-priority events, or rejected outright.
+
+<Warning>
+  All write endpoints (`POST`, `PUT`, `DELETE`) require a valid admin Bearer token. Requests without a token or with insufficient privileges will be rejected.
+</Warning>
+
+---
+
+## Priority system
+
+When you create an event, `prioridad_evento` determines how the AI conflict resolver handles overlapping events. If you omit the field, the system derives it from the authenticated user's role:
+
+| Role | Default `prioridad_evento` |
+|------|--------------------------|
+| `rector` | 4 |
+| `admin` | Inherits creator's `prioridad` field (default: 4) |
+| `profesor` | 3 |
+| `alumno` | Inherits creator's `prioridad` field (default: 4) |
+
+A **strictly higher** priority number wins. An incoming event can displace existing events only if its priority is greater than theirs. If priority is equal, the incoming event is rejected. If you omit `prioridad_evento`, the system derives it from the authenticated creator's role as shown above.
+
+---
+
+## List events
+
+<Note>
+  This endpoint requires no authentication. Results are ordered by `fecha_inicio` ascending.
+</Note>
+
+```
+GET /api/eventos
+```
+
+### Query parameters
+
+<ParamField query="publico" type="string">
+  Filter by visibility. Pass `"true"` to return only public events, `"false"` for private events. Omit to return all.
+</ParamField>
+
+<ParamField query="activo" type="string">
+  Filter by active status. Pass `"true"` or `"false"`. Omit to return all.
+</ParamField>
+
+### Response
+
+Returns an array of evento objects ordered by `fecha_inicio`.
+
+<ResponseField name="id_evento" type="integer">
+  Unique event identifier.
+</ResponseField>
+<ResponseField name="nombre" type="string">
+  Event name.
+</ResponseField>
+<ResponseField name="descripcion" type="string">
+  Optional event description.
+</ResponseField>
+<ResponseField name="fecha_inicio" type="string">
+  ISO 8601 start datetime.
+</ResponseField>
+<ResponseField name="fecha_fin" type="string">
+  ISO 8601 end datetime.
+</ResponseField>
+<ResponseField name="publico" type="boolean">
+  Whether the event is publicly visible.
+</ResponseField>
+<ResponseField name="activo" type="boolean">
+  Whether the event is active.
+</ResponseField>
+<ResponseField name="prioridad_evento" type="integer">
+  Scheduling priority used by the conflict detection model.
+</ResponseField>
+<ResponseField name="total_invitados" type="integer">
+  Expected number of attendees set at creation time.
+</ResponseField>
+<ResponseField name="asistentes_confirmados" type="integer">
+  Count of QR-code attendance confirmations received.
+</ResponseField>
+<ResponseField name="edificio" type="object">
+  <Expandable title="edificio properties">
+    <ResponseField name="id_edificio" type="integer">Building identifier.</ResponseField>
+    <ResponseField name="nombre" type="string">Building name.</ResponseField>
+    <ResponseField name="tipo" type="string">Building type: `academico`, `administrativo`, or `recreativo`.</ResponseField>
+    <ResponseField name="latitud" type="number">Geographic latitude.</ResponseField>
+    <ResponseField name="longitud" type="number">Geographic longitude.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash
+curl https://your-domain/api/eventos?publico=true&activo=true
+```
+
+---
+
+## Get event by ID
+
+```
+GET /api/eventos/:id
+```
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The event's `id_evento`.
+</ParamField>
+
+### Response
+
+Returns a single evento object with full `edificio` details. Returns `404` if no event matches the given ID.
+
+```bash
+curl https://your-domain/api/eventos/42
+```
+
+---
+
+## Create event
+
+```
+POST /api/eventos
+```
+
+<Warning>
+  Requires an admin Bearer token.
+</Warning>
+
+<Note>
+  Before the event is saved, the AI conflict resolver evaluates it against all existing events in the same building and time window. The request may be rejected (`409`) or saved with a displacement warning if lower-priority events are moved.
+</Note>
+
+### Request body
+
+<ParamField body="nombre" type="string" required>
+  Event name.
+</ParamField>
+<ParamField body="descripcion" type="string">
+  Optional description of the event.
+</ParamField>
+<ParamField body="fecha_inicio" type="string" required>
+  Start datetime in ISO 8601 format, e.g. `"2026-06-01T09:00:00.000Z"`.
+</ParamField>
+<ParamField body="fecha_fin" type="string" required>
+  End datetime in ISO 8601 format.
+</ParamField>
+<ParamField body="id_edificio" type="integer" required>
+  ID of the building where the event takes place.
+</ParamField>
+<ParamField body="publico" type="boolean" default="true">
+  Whether the event is publicly visible.
+</ParamField>
+<ParamField body="activo" type="boolean" default="true">
+  Whether the event is active.
+</ParamField>
+<ParamField body="prioridad_evento" type="integer">
+  Scheduling priority (1–4). If omitted, the system derives the value from the creator's role. See the priority table above.
+</ParamField>
+<ParamField body="total_invitados" type="integer" default="0">
+  Expected number of attendees.
+</ParamField>
+
+### Response
+
+Returns `201` with the created evento object (including `edificio`).
+
+If the AI displaced lower-priority events to accommodate this one, the response also includes:
+
+```json
+{
+  "warning": "El evento fue agendado desplazando otros."
+}
+```
+
+### Error — conflict rejected
+
+If the AI determines that the event cannot be scheduled (conflict with a higher- or equal-priority event), the API returns `409`:
+
+```json
+{
+  "error": "No es posible agendar el evento por conflicto de horario."
+}
+```
+
+The exact message text comes from the neural network's evaluation result.
+
+```bash
+curl -X POST https://your-domain/api/eventos \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Conferencia de Innovación",
+    "descripcion": "Ponencias sobre tecnología educativa",
+    "fecha_inicio": "2026-06-15T09:00:00.000Z",
+    "fecha_fin": "2026-06-15T12:00:00.000Z",
+    "id_edificio": 3,
+    "publico": true,
+    "total_invitados": 120
+  }'
+```
+
+---
+
+## Update event
+
+```
+PUT /api/eventos/:id
+```
+
+<Warning>
+  Requires an admin Bearer token.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The event's `id_evento`.
+</ParamField>
+
+### Request body
+
+All fields are optional. Provide only the fields you want to change. If `fecha_inicio`, `fecha_fin`, or `id_edificio` are included, the AI conflict resolver runs again on the merged event data.
+
+<ParamField body="nombre" type="string">Event name.</ParamField>
+<ParamField body="descripcion" type="string">Event description.</ParamField>
+<ParamField body="fecha_inicio" type="string">New start datetime (ISO 8601).</ParamField>
+<ParamField body="fecha_fin" type="string">New end datetime (ISO 8601).</ParamField>
+<ParamField body="id_edificio" type="integer">Building ID.</ParamField>
+<ParamField body="publico" type="boolean">Public visibility flag.</ParamField>
+<ParamField body="activo" type="boolean">Active status flag.</ParamField>
+<ParamField body="prioridad_evento" type="integer">Scheduling priority.</ParamField>
+<ParamField body="total_invitados" type="integer">Expected attendee count.</ParamField>
+
+### Response
+
+Returns the updated evento object with `edificio` details. Returns `404` if the event does not exist. Returns `409` if the updated schedule conflicts with a higher-priority event.
+
+```bash
+curl -X PUT https://your-domain/api/eventos/42 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fecha_inicio": "2026-06-15T10:00:00.000Z",
+    "fecha_fin": "2026-06-15T13:00:00.000Z"
+  }'
+```
+
+---
+
+## Delete event
+
+```
+DELETE /api/eventos/:id
+```
+
+<Warning>
+  Requires an admin Bearer token.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The event's `id_evento`.
+</ParamField>
+
+### Response
+
+```json
+{
+  "message": "Evento eliminado"
+}
+```
+
+```bash
+curl -X DELETE https://your-domain/api/eventos/42 \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
+## Train conflict detection model
+
+```
+POST /api/eventos/entrenar-neurona
+```
+
+<Note>
+  This is an admin-only operation that retrains the TensorFlow.js neural network used for scheduling conflict detection. Run this endpoint after significant changes to your event dataset to improve prediction accuracy. Training happens synchronously — the response is returned once training completes.
+</Note>
+
+<Warning>
+  Requires an admin Bearer token.
+</Warning>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` when training completes without error.
+</ResponseField>
+<ResponseField name="history" type="object">
+  TensorFlow.js training history object containing per-epoch loss and metric values.
+</ResponseField>
+
+```bash
+curl -X POST https://your-domain/api/eventos/entrenar-neurona \
+  -H "Authorization: Bearer <token>"
+```

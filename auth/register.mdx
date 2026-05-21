@@ -1,0 +1,97 @@
+---
+title: 'Register a new AirGuide account'
+description: 'Create an AirGuide account by submitting your email, password, and name. All new accounts start as pending and require admin approval before login.'
+---
+
+Use this endpoint to create a new AirGuide account. After a successful registration, your account is created with `estado: "pendiente"` and `rol: "alumno"`. You cannot log in until an administrator approves your account. See the [authentication overview](/auth/overview) for the full account lifecycle.
+
+## Endpoint
+
+```
+POST /api/auth/register
+```
+
+## Request body
+
+<ParamField body="correo" type="string" required>
+  The email address for your account. Must be unique — registration fails if the email is already in use.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Your account password. Must pass the server-side validation rules defined in the auth validator.
+</ParamField>
+
+<ParamField body="nombre" type="string" required>
+  Your full name as it will appear in the system.
+</ParamField>
+
+<ParamField body="matricula" type="string">
+  Your student ID number. Optional, but must be unique if provided — registration fails if the matricula is already registered.
+</ParamField>
+
+## Response
+
+A `201 Created` response with the following fields:
+
+<ResponseField name="message" type="string">
+  A human-readable confirmation: `"Registro exitoso. Tu cuenta está pendiente de validación por un administrador."`
+</ResponseField>
+
+<ResponseField name="usuario" type="object">
+  The newly created user record.
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Unique numeric identifier for the user.
+    </ResponseField>
+    <ResponseField name="correo" type="string">
+      The registered email address.
+    </ResponseField>
+    <ResponseField name="nombre" type="string">
+      The user's full name.
+    </ResponseField>
+    <ResponseField name="matricula" type="string">
+      The student ID. Returns an empty string if not provided.
+    </ResponseField>
+    <ResponseField name="rol" type="string">
+      Always `"alumno"` on registration.
+    </ResponseField>
+    <ResponseField name="estado" type="string">
+      Always `"pendiente"` on registration. An admin must change this to `"activo"` before you can log in.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```bash Request
+curl -X POST https://your-api.example.com/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "correo": "estudiante@universidad.edu",
+    "password": "MySecurePassword1!",
+    "nombre": "María García",
+    "matricula": "A12345678"
+  }'
+```
+
+```json Response
+{
+  "message": "Registro exitoso. Tu cuenta está pendiente de validación por un administrador.",
+  "usuario": {
+    "id": 42,
+    "correo": "estudiante@universidad.edu",
+    "nombre": "María García",
+    "matricula": "A12345678",
+    "rol": "alumno",
+    "estado": "pendiente"
+  }
+}
+```
+
+</CodeGroup>
+
+<Note>
+  Your account is automatically assigned `estado: "pendiente"` and `rol: "alumno"`. An administrator must validate your account before you can log in. Until then, any login attempt returns `403 Forbidden`.
+</Note>

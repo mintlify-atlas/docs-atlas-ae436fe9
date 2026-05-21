@@ -1,0 +1,204 @@
+---
+title: 'Map data and Google Routes integration'
+description: 'Retrieve campus GeoJSON map data for rendering buildings and paths, and proxy walking route calculations through the Google Routes API v2.'
+---
+
+Two endpoints power the map view in AirGuide. `GET /api/mapa/data` returns a GeoJSON FeatureCollection that your client can render directly — it combines building point markers with geographic path geometries imported from OpenStreetMap. `POST /api/google/compute-route` acts as an authenticated proxy to the Google Routes API v2, calculating a walking route between any two coordinates without exposing your API key to the client.
+
+---
+
+## GET /api/mapa/data
+
+Returns a GeoJSON `FeatureCollection` that combines all active buildings and all active geographic paths on campus. No authentication is required.
+
+<Note>
+  GeoJSON coordinates follow the standard `[longitude, latitude]` order, not the more common `[latitude, longitude]` order used elsewhere in this API. Make sure your mapping library (e.g. Leaflet, Mapbox GL) reads coordinates correctly.
+</Note>
+
+### Response — 200 OK
+
+<ResponseField name="type" type="string">
+  Always `"FeatureCollection"`.
+</ResponseField>
+
+<ResponseField name="features" type="object[]">
+  Array of GeoJSON Feature objects. Contains both building point features and path line features.
+  <Expandable title="building feature properties">
+    <ResponseField name="type" type="string">
+      Always `"Feature"`.
+    </ResponseField>
+    <ResponseField name="geometry.type" type="string">
+      Always `"Point"` for building features.
+    </ResponseField>
+    <ResponseField name="geometry.coordinates" type="number[]">
+      `[longitude, latitude]` pair for the building centroid.
+    </ResponseField>
+    <ResponseField name="properties.name" type="string">
+      Building name.
+    </ResponseField>
+    <ResponseField name="properties.type" type="string">
+      Always `"building"` for building features.
+    </ResponseField>
+    <ResponseField name="properties.id" type="integer">
+      The building's `id_edificio`.
+    </ResponseField>
+    <ResponseField name="properties.descripcion" type="string">
+      Optional description of the building. May be `null`.
+    </ResponseField>
+  </Expandable>
+  <Expandable title="path feature properties">
+    <ResponseField name="type" type="string">
+      Always `"Feature"`.
+    </ResponseField>
+    <ResponseField name="geometry" type="object">
+      GeoJSON LineString geometry stored directly from the `CaminoGeografico.geometria` field.
+    </ResponseField>
+    <ResponseField name="properties.type" type="string">
+      OSM highway type: `footway`, `path`, or `steps`.
+    </ResponseField>
+    <ResponseField name="properties.id" type="integer">
+      The path's `id_camino`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl http://localhost:3001/api/mapa/data
+```
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Edificio A",
+        "type": "building",
+        "id": 1,
+        "descripcion": "Edificio de ingeniería y sistemas"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-99.1332, 19.4326]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "footway",
+        "id": 5
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-99.1331, 19.4325],
+          [-99.1330, 19.4327]
+        ]
+      }
+    }
+  ]
+}
+```
+
+---
+
+## POST /api/google/compute-route
+
+Proxies a walking route calculation to the Google Routes API v2 (`routes.googleapis.com`). The server attaches the `GOOGLE_ROUTES_API_KEY` and requests only the fields `routes.duration`, `routes.distanceMeters`, and `routes.polyline.encodedPolyline`. Authentication via Bearer token is required so that the API key is never exposed in client code.
+
+<Note>
+  This endpoint always uses `travelMode: WALK` and `languageCode: es-MX` with metric units. Alternative routes are not computed.
+</Note>
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for any authenticated user: `Bearer <token>`.
+</ParamField>
+
+### Request body
+
+<ParamField body="originCoords" type="object" required>
+  Starting point coordinates.
+  <Expandable title="properties">
+    <ResponseField name="latitude" type="number">
+      Latitude of the origin.
+    </ResponseField>
+    <ResponseField name="longitude" type="number">
+      Longitude of the origin.
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="destinationCoords" type="object" required>
+  Ending point coordinates.
+  <Expandable title="properties">
+    <ResponseField name="latitude" type="number">
+      Latitude of the destination.
+    </ResponseField>
+    <ResponseField name="longitude" type="number">
+      Longitude of the destination.
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="routingPreference" type="string" default="TRAFFIC_UNAWARE">
+  Google routing preference value passed through to the Routes API. Defaults to `TRAFFIC_UNAWARE`.
+</ParamField>
+
+### Response — 200 OK
+
+The unmodified JSON response body from the Google Routes API v2. Key fields in the response:
+
+<ResponseField name="routes" type="object[]">
+  Array of computed route options (typically one for walking).
+  <Expandable title="route properties">
+    <ResponseField name="duration" type="string">
+      Estimated travel duration as a protobuf Duration string, e.g. `"420s"`.
+    </ResponseField>
+    <ResponseField name="distanceMeters" type="integer">
+      Total route distance in meters.
+    </ResponseField>
+    <ResponseField name="polyline.encodedPolyline" type="string">
+      Encoded polyline string representing the route geometry. Decode with a polyline library before rendering.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `400` | `{ "error": "Faltan coordenadas" }` | `originCoords` or `destinationCoords` missing from the request body. |
+| `401` | — | No or invalid Bearer token. |
+| `500` | `{ "error": "No se pudo calcular la ruta" }` | The Google Routes API returned an error. |
+
+### Example
+
+```bash
+curl --request POST \
+  --url http://localhost:3001/api/google/compute-route \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "originCoords": { "latitude": 19.4326, "longitude": -99.1332 },
+    "destinationCoords": { "latitude": 19.4341, "longitude": -99.1315 }
+  }'
+```
+
+```json
+{
+  "routes": [
+    {
+      "distanceMeters": 380,
+      "duration": "284s",
+      "polyline": {
+        "encodedPolyline": "}_mnFnvq{Q..."
+      }
+    }
+  ]
+}
+```

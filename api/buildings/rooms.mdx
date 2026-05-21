@@ -1,0 +1,273 @@
+---
+title: 'Classroom (salones) endpoints'
+description: 'Query and manage classrooms, laboratories, and auditoriums within campus buildings, with filtering by floor, type, and parent building ID.'
+---
+
+The salones (rooms) resource lets you list all rooms across campus, list rooms within a specific building, and create, update, or delete individual room records. Rooms are typed as `aula` (regular classroom), `laboratorio` (laboratory), or `auditorio` (auditorium). Read operations are public; write operations require admin authentication.
+
+<Warning>
+  `POST`, `PUT`, and `DELETE` requests require a valid Bearer token from an account with the `admin` role.
+</Warning>
+
+---
+
+## TipoSalon enum values
+
+| Value | Meaning |
+|---|---|
+| `aula` | Standard classroom used for lectures and seminars. |
+| `laboratorio` | Laboratory equipped for practical or computer-based work. |
+| `auditorio` | Large auditorium for presentations and events. |
+
+---
+
+## List all rooms
+
+<br />
+
+`GET /api/edificios/salones`
+
+Returns every room in the system, ordered by building then by floor. Each room object includes summary information about its parent building.
+
+### Response
+
+<ResponseField name="id_salon" type="integer">Room ID.</ResponseField>
+<ResponseField name="id_edificio" type="integer">Parent building ID.</ResponseField>
+<ResponseField name="nombre" type="string">Room name or label.</ResponseField>
+<ResponseField name="piso" type="integer">Floor number where the room is located.</ResponseField>
+<ResponseField name="tipo" type="string">Room type: `aula`, `laboratorio`, or `auditorio`.</ResponseField>
+<ResponseField name="activo" type="boolean">Whether the room is active.</ResponseField>
+<ResponseField name="edificio" type="object">
+  <Expandable title="properties">
+    <ResponseField name="id_edificio" type="integer">Building ID.</ResponseField>
+    <ResponseField name="nombre" type="string">Building name.</ResponseField>
+    <ResponseField name="tipo" type="string">Building type.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.example.com/api/edificios/salones
+```
+
+```json
+[
+  {
+    "id_salon": 1,
+    "id_edificio": 2,
+    "nombre": "Lab 301",
+    "piso": 3,
+    "tipo": "laboratorio",
+    "activo": true,
+    "edificio": {
+      "id_edificio": 2,
+      "nombre": "Edificio B",
+      "tipo": "academico"
+    }
+  }
+]
+```
+
+---
+
+## List rooms by building
+
+<br />
+
+`GET /api/edificios/:id/salones`
+
+Returns all rooms belonging to a specific building, ordered by floor.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_edificio` of the building whose rooms you want to retrieve.
+</ParamField>
+
+### Response
+
+Returns an array of room objects (without the nested `edificio` field). Returns an empty array if the building has no rooms.
+
+### Example
+
+```bash
+curl https://api.example.com/api/edificios/2/salones
+```
+
+```json
+[
+  {
+    "id_salon": 1,
+    "id_edificio": 2,
+    "nombre": "Aula 101",
+    "piso": 1,
+    "tipo": "aula",
+    "activo": true
+  },
+  {
+    "id_salon": 2,
+    "id_edificio": 2,
+    "nombre": "Lab 301",
+    "piso": 3,
+    "tipo": "laboratorio",
+    "activo": true
+  }
+]
+```
+
+---
+
+## Create a room
+
+<br />
+
+`POST /api/edificios/:id/salones`
+
+Creates a new room inside the specified building. Returns `404` if the building does not exist. Requires admin authentication.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_edificio` of the building the room belongs to.
+</ParamField>
+
+### Request body
+
+<ParamField body="nombre" type="string" required>
+  Room name or label (e.g., `"Aula 202"`, `"Lab de Redes"`).
+</ParamField>
+
+<ParamField body="piso" type="integer" required>
+  Floor number where the room is located. Use `0` for ground floor.
+</ParamField>
+
+<ParamField body="tipo" type="string" required>
+  Room type. One of: `aula`, `laboratorio`, `auditorio`.
+</ParamField>
+
+<ParamField body="activo" type="boolean" default="true">
+  Set to `false` to create the room in an inactive state.
+</ParamField>
+
+### Response
+
+Returns the created room with its parent building summary and HTTP `201 Created`. Returns `404` with `{ "error": "Edificio no encontrado" }` if the building ID is invalid.
+
+### Example
+
+```bash
+curl -X POST https://api.example.com/api/edificios/2/salones \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Auditorio Central",
+    "piso": 1,
+    "tipo": "auditorio",
+    "activo": true
+  }'
+```
+
+```json
+{
+  "id_salon": 8,
+  "id_edificio": 2,
+  "nombre": "Auditorio Central",
+  "piso": 1,
+  "tipo": "auditorio",
+  "activo": true,
+  "edificio": {
+    "id_edificio": 2,
+    "nombre": "Edificio B",
+    "tipo": "academico"
+  }
+}
+```
+
+---
+
+## Update a room
+
+<br />
+
+`PUT /api/edificios/salones/:id`
+
+Updates an existing room. Send only the fields you want to change. Requires admin authentication.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_salon` of the room to update.
+</ParamField>
+
+### Request body
+
+All fields are optional for partial updates.
+
+<ParamField body="nombre" type="string">Room name.</ParamField>
+<ParamField body="piso" type="integer">Floor number.</ParamField>
+<ParamField body="tipo" type="string">Room type: `aula`, `laboratorio`, or `auditorio`.</ParamField>
+<ParamField body="activo" type="boolean">Active status.</ParamField>
+
+### Response
+
+Returns the updated room with its parent building summary.
+
+### Example
+
+```bash
+curl -X PUT https://api.example.com/api/edificios/salones/8 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Auditorio Norte",
+    "activo": false
+  }'
+```
+
+```json
+{
+  "id_salon": 8,
+  "id_edificio": 2,
+  "nombre": "Auditorio Norte",
+  "piso": 1,
+  "tipo": "auditorio",
+  "activo": false,
+  "edificio": {
+    "id_edificio": 2,
+    "nombre": "Edificio B",
+    "tipo": "academico"
+  }
+}
+```
+
+---
+
+## Delete a room
+
+<br />
+
+`DELETE /api/edificios/salones/:id`
+
+Permanently deletes a room record. Requires admin authentication.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_salon` of the room to delete.
+</ParamField>
+
+### Response
+
+```json
+{
+  "message": "Salón eliminado"
+}
+```
+
+### Example
+
+```bash
+curl -X DELETE https://api.example.com/api/edificios/salones/8 \
+  -H "Authorization: Bearer <token>"
+```

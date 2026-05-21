@@ -1,0 +1,301 @@
+---
+title: 'Professor profiles and cubicle endpoints'
+description: 'Create and manage campus professor profiles linked to user accounts and departments. Creating a profile updates the linked user role to profesor.'
+---
+
+The professors resource (`/api/profesores`) exposes CRUD operations for professor profiles. A professor profile is always linked to an existing user account; when you create a professor record the referenced user's role is automatically updated to `profesor`. Profiles include the professor's department and their associated cubicle assignments. Read operations are public; write operations require admin authentication.
+
+<Warning>
+  `POST`, `PUT`, and `DELETE` requests require a valid Bearer token from an account with the `admin` role.
+</Warning>
+
+---
+
+## List all professors
+
+<br />
+
+`GET /api/profesores`
+
+Returns all professor profiles with their linked user information and cubicle assignments.
+
+### Response
+
+<ResponseField name="id_profesor" type="integer">Professor profile ID.</ResponseField>
+<ResponseField name="id_usuario" type="integer">Linked user account ID.</ResponseField>
+<ResponseField name="departamento" type="string">Department the professor belongs to.</ResponseField>
+<ResponseField name="activo" type="boolean">Whether the professor profile is active.</ResponseField>
+<ResponseField name="usuario" type="object">
+  <Expandable title="properties">
+    <ResponseField name="nombre" type="string">User's full name.</ResponseField>
+    <ResponseField name="correo" type="string">User's email address.</ResponseField>
+  </Expandable>
+</ResponseField>
+<ResponseField name="cubiculos" type="object[]">
+  <Expandable title="properties">
+    <ResponseField name="id_cubiculo" type="integer">Cubicle ID.</ResponseField>
+    <ResponseField name="numero" type="string">Cubicle number/label.</ResponseField>
+    <ResponseField name="piso" type="integer">Floor number.</ResponseField>
+    <ResponseField name="referencia" type="string | null">Location reference description.</ResponseField>
+    <ResponseField name="activo" type="boolean">Active status.</ResponseField>
+    <ResponseField name="edificio" type="object">
+      <Expandable title="properties">
+        <ResponseField name="id_edificio" type="integer">Building ID.</ResponseField>
+        <ResponseField name="nombre" type="string">Building name.</ResponseField>
+        <ResponseField name="latitud" type="string">Building latitude.</ResponseField>
+        <ResponseField name="longitud" type="string">Building longitude.</ResponseField>
+        <ResponseField name="tipo" type="string">Building type.</ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.example.com/api/profesores
+```
+
+```json
+[
+  {
+    "id_profesor": 1,
+    "id_usuario": 10,
+    "departamento": "Sistemas Computacionales",
+    "activo": true,
+    "usuario": {
+      "nombre": "María López",
+      "correo": "m.lopez@universidad.edu"
+    },
+    "cubiculos": [
+      {
+        "id_cubiculo": 3,
+        "numero": "C-12",
+        "piso": 2,
+        "referencia": "Frente a la biblioteca",
+        "activo": true,
+        "edificio": {
+          "id_edificio": 1,
+          "nombre": "Edificio A",
+          "latitud": "19.43200000",
+          "longitud": "-99.13300000",
+          "tipo": "academico"
+        }
+      }
+    ]
+  }
+]
+```
+
+---
+
+## Get a professor by ID
+
+<br />
+
+`GET /api/profesores/:id`
+
+Returns a single professor profile with linked user data, cubicle assignments, and full building details for each cubicle.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_profesor` of the professor to retrieve.
+</ParamField>
+
+### Response
+
+Returns the professor object. Returns `404` with `{ "error": "Profesor no encontrado" }` if no professor with the given ID exists.
+
+### Example
+
+```bash
+curl https://api.example.com/api/profesores/1
+```
+
+```json
+{
+  "id_profesor": 1,
+  "id_usuario": 10,
+  "departamento": "Sistemas Computacionales",
+  "activo": true,
+  "usuario": {
+    "nombre": "María López",
+    "correo": "m.lopez@universidad.edu"
+  },
+  "cubiculos": [
+    {
+      "id_cubiculo": 3,
+      "id_profesor": 1,
+      "id_edificio": 1,
+      "numero": "C-12",
+      "piso": 2,
+      "referencia": "Frente a la biblioteca",
+      "activo": true,
+      "edificio": {
+        "id_edificio": 1,
+        "nombre": "Edificio A",
+        "descripcion": "Facultad de Ingeniería",
+        "latitud": "19.43200000",
+        "longitud": "-99.13300000",
+        "tipo": "academico",
+        "activo": true
+      }
+    }
+  ]
+}
+```
+
+---
+
+## Create a professor
+
+<br />
+
+`POST /api/profesores`
+
+Creates a professor profile for an existing user. Requires admin authentication.
+
+<Note>
+  Creating a professor profile automatically updates the referenced user's `rol` field to `"profesor"`. Make sure the `id_usuario` refers to an existing user account before calling this endpoint.
+</Note>
+
+### Request body
+
+<ParamField body="id_usuario" type="integer" required>
+  ID of the existing user account to link. Their role will be set to `profesor` as a side effect.
+</ParamField>
+
+<ParamField body="departamento" type="string" required>
+  Department the professor belongs to (e.g., `"Ingeniería de Software"`).
+</ParamField>
+
+<ParamField body="id_cubiculo" type="integer">
+  Optional cubicle to assign to this professor. The cubicle record's `id_profesor` field is updated to point to the new professor.
+</ParamField>
+
+<ParamField body="activo" type="boolean" default="true">
+  Set to `false` to create the profile in an inactive state.
+</ParamField>
+
+### Response
+
+Returns the created professor profile with user info and cubicle assignments, and HTTP `201 Created`.
+
+### Example
+
+```bash
+curl -X POST https://api.example.com/api/profesores \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id_usuario": 15,
+    "departamento": "Matemáticas Aplicadas",
+    "id_cubiculo": 7,
+    "activo": true
+  }'
+```
+
+```json
+{
+  "id_profesor": 4,
+  "id_usuario": 15,
+  "departamento": "Matemáticas Aplicadas",
+  "activo": true,
+  "usuario": {
+    "nombre": "Carlos Ramírez",
+    "correo": "c.ramirez@universidad.edu"
+  },
+  "cubiculos": []
+}
+```
+
+<Tip>
+  After creation, the cubicle assignment (`id_cubiculo`) is applied as a separate update to the cubicle record. Fetch the professor by ID immediately after creation to see the updated cubicle list.
+</Tip>
+
+---
+
+## Update a professor
+
+<br />
+
+`PUT /api/profesores/:id`
+
+Updates an existing professor profile. Requires admin authentication.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_profesor` of the professor to update.
+</ParamField>
+
+### Request body
+
+All fields are optional.
+
+<ParamField body="departamento" type="string">Department name.</ParamField>
+<ParamField body="activo" type="boolean">Active status of the professor profile.</ParamField>
+<ParamField body="id_cubiculo" type="integer">Assign a new cubicle to this professor. The cubicle record is updated accordingly.</ParamField>
+
+### Response
+
+Returns the updated professor with user info and cubicle assignments.
+
+### Example
+
+```bash
+curl -X PUT https://api.example.com/api/profesores/4 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "departamento": "Física y Matemáticas",
+    "activo": true,
+    "id_cubiculo": 9
+  }'
+```
+
+```json
+{
+  "id_profesor": 4,
+  "id_usuario": 15,
+  "departamento": "Física y Matemáticas",
+  "activo": true,
+  "usuario": {
+    "nombre": "Carlos Ramírez",
+    "correo": "c.ramirez@universidad.edu"
+  },
+  "cubiculos": []
+}
+```
+
+---
+
+## Delete a professor
+
+<br />
+
+`DELETE /api/profesores/:id`
+
+Permanently deletes a professor profile. The linked user account is not deleted. Requires admin authentication.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_profesor` of the professor to delete.
+</ParamField>
+
+### Response
+
+```json
+{
+  "message": "Profesor eliminado"
+}
+```
+
+### Example
+
+```bash
+curl -X DELETE https://api.example.com/api/profesores/4 \
+  -H "Authorization: Bearer <token>"
+```

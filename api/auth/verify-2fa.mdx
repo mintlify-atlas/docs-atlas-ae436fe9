@@ -1,0 +1,107 @@
+---
+title: 'POST /api/auth/verify-2fa — exchange OTP for JWT'
+description: 'Complete the AirGuide two-factor login by submitting the OTP received by email. Returns a signed JWT Bearer token and the authenticated user object.'
+---
+
+This is step two of the AirGuide login flow. After a successful call to [POST /api/auth/login](/api/auth/login), the user receives a one-time code by email. Submit that code here along with the email address to receive a JWT bearer token. Include the token in the `Authorization` header of every subsequent authenticated request.
+
+---
+
+## POST /api/auth/verify-2fa
+
+Verifies the OTP against the database. The code must be unused and must not have expired. On success, the OTP is marked as consumed, an access log entry is created, and a signed JWT is returned.
+
+### Request body
+
+<ParamField body="correo" type="string" required>
+  The email address used during the login step.
+</ParamField>
+
+<ParamField body="codigo" type="string" required>
+  The one-time code received in the verification email.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="token" type="string">
+  A signed JWT bearer token. Include this value in the `Authorization` header as `Bearer <token>` for all authenticated endpoints.
+</ResponseField>
+
+<ResponseField name="usuario" type="object">
+  The authenticated user record.
+
+  <Expandable title="usuario properties">
+    <ResponseField name="id" type="number">
+      Internal numeric user identifier.
+    </ResponseField>
+    <ResponseField name="correo" type="string">
+      User's email address.
+    </ResponseField>
+    <ResponseField name="nombre" type="string">
+      User's full name.
+    </ResponseField>
+    <ResponseField name="matricula" type="string">
+      Student ID number. May be an empty string for non-student accounts.
+    </ResponseField>
+    <ResponseField name="rol" type="string">
+      Role assigned to the user. One of `rector`, `admin`, `profesor`, or `alumno`.
+    </ResponseField>
+    <ResponseField name="prioridad" type="number">
+      Numeric priority level associated with the role. Lower values indicate higher priority.
+    </ResponseField>
+    <ResponseField name="estado" type="string">
+      Account status at the time of login. Will be `activo` for any successfully authenticated session.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `401` | `{ "error": "Código incorrecto o expirado. Solicita uno nuevo." }` | OTP not found, already used, or past its expiry time. |
+| `401` | `{ "error": "Usuario no encontrado" }` | No account matches the provided `correo`. |
+| `400` | `{ "error": "Correo y código son requeridos" }` | Either `correo` or `codigo` is missing from the request body. |
+
+### Example
+
+```bash
+curl --request POST \
+  --url https://api.example.com/api/auth/verify-2fa \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "correo": "alumno@ejemplo.edu.mx",
+    "codigo": "483921"
+  }'
+```
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "usuario": {
+    "id": 42,
+    "correo": "alumno@ejemplo.edu.mx",
+    "nombre": "Juan Pérez",
+    "matricula": "A00123456",
+    "rol": "alumno",
+    "prioridad": 4,
+    "estado": "activo"
+  }
+}
+```
+
+---
+
+## Using the token in subsequent requests
+
+Pass the JWT in the `Authorization` header on every request that requires authentication:
+
+```bash
+curl --request GET \
+  --url https://api.example.com/api/auth/me \
+  --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+```
+
+<Tip>
+  Store the token securely in your client (for example, in memory or a secure cookie). Do not persist it in `localStorage` in browser environments if you are handling sensitive data.
+</Tip>

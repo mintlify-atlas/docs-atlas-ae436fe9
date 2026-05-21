@@ -1,0 +1,294 @@
+---
+title: 'Analytics report endpoints for admins'
+description: 'Granular analytics reports covering building types, upcoming events, login timelines, user role distribution, and popular routes. Admin token required.'
+---
+
+The analytics report endpoints provide granular breakdowns of platform data for use in charts, tables, and operational reports. Each endpoint targets a specific dimension — building types, upcoming events, login history, daily access timelines, user role distribution, and popular navigation routes — so you can query only the data your admin interface needs.
+
+<Warning>
+  All endpoints on this page require an admin Bearer token. Requests without a valid token or from non-admin users are rejected with `401` or `403`.
+</Warning>
+
+---
+
+## GET /api/analytics/edificios-tipo
+
+Returns the count of active buildings grouped by type.
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin user.
+</ParamField>
+
+### Response — 200 OK
+
+Returns an array of objects, one per building type found among active buildings.
+
+<ResponseField name="tipo" type="string">
+  Building type identifier. Common values: `academico`, `administrativo`, `recreativo`.
+</ResponseField>
+
+<ResponseField name="cantidad" type="number">
+  Number of active buildings with this type.
+</ResponseField>
+
+### Example
+
+```bash
+curl --request GET \
+  --url https://your-domain/api/analytics/edificios-tipo \
+  --header 'Authorization: Bearer <token>'
+```
+
+```json
+[
+  { "tipo": "academico", "cantidad": 7 },
+  { "tipo": "administrativo", "cantidad": 3 },
+  { "tipo": "recreativo", "cantidad": 2 }
+]
+```
+
+---
+
+## GET /api/analytics/eventos-proximos
+
+Returns up to 10 active events starting within the next three months, ordered by `fecha_inicio` ascending. Use this to display an upcoming-events widget in an admin dashboard.
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin user.
+</ParamField>
+
+### Response — 200 OK
+
+Returns an array of evento objects. Each object includes the full event record plus a nested `edificio` with its `nombre`.
+
+<ResponseField name="id_evento" type="integer">
+  Unique event identifier.
+</ResponseField>
+
+<ResponseField name="nombre" type="string">
+  Event name.
+</ResponseField>
+
+<ResponseField name="fecha_inicio" type="string">
+  ISO 8601 start datetime.
+</ResponseField>
+
+<ResponseField name="fecha_fin" type="string">
+  ISO 8601 end datetime.
+</ResponseField>
+
+<ResponseField name="activo" type="boolean">
+  Always `true` for results returned by this endpoint.
+</ResponseField>
+
+<ResponseField name="edificio" type="object">
+  The building associated with this event.
+  <Expandable title="edificio properties">
+    <ResponseField name="nombre" type="string">Building name.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl --request GET \
+  --url https://your-domain/api/analytics/eventos-proximos \
+  --header 'Authorization: Bearer <token>'
+```
+
+---
+
+## GET /api/analytics/accesos-recientes
+
+Returns up to 50 recent login access log entries from the last N days, ordered by `fecha` descending. Use this to audit recent authentication activity.
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin user.
+</ParamField>
+
+### Query parameters
+
+<ParamField query="days" type="integer" default="7">
+  Number of days to look back from the current moment. Defaults to `7` if omitted.
+</ParamField>
+
+### Response — 200 OK
+
+Returns an array of log access objects with a nested `usuario`.
+
+<ResponseField name="fecha" type="string">
+  ISO 8601 timestamp of the login event.
+</ResponseField>
+
+<ResponseField name="usuario" type="object">
+  The user who triggered the access log entry.
+  <Expandable title="usuario properties">
+    <ResponseField name="nombre" type="string">User's full name.</ResponseField>
+    <ResponseField name="correo" type="string">User's email address.</ResponseField>
+    <ResponseField name="rol" type="string">User role, e.g. `alumno`, `profesor`, `admin`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Note>
+  The response is capped at 50 records regardless of how many log entries fall within the requested window. To retrieve older records, reduce the time window or paginate at the application level.
+</Note>
+
+### Example
+
+```bash
+curl --request GET \
+  --url 'https://your-domain/api/analytics/accesos-recientes?days=7' \
+  --header 'Authorization: Bearer <token>'
+```
+
+---
+
+## GET /api/analytics/accesos-timeline
+
+Returns daily access counts over the last N days. Each entry in the response array represents one calendar day and the number of logins recorded that day. Use this data to render a time-series chart.
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin user.
+</ParamField>
+
+### Query parameters
+
+<ParamField query="days" type="integer" default="30">
+  Number of days to include in the timeline. Defaults to `30` if omitted.
+</ParamField>
+
+### Response — 200 OK
+
+Returns an array of daily aggregates. Days with zero accesses are not included.
+
+<ResponseField name="fecha" type="string">
+  Calendar date in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="accesos" type="number">
+  Number of login events recorded on this date.
+</ResponseField>
+
+### Example
+
+```bash
+curl --request GET \
+  --url 'https://your-domain/api/analytics/accesos-timeline?days=30' \
+  --header 'Authorization: Bearer <token>'
+```
+
+```json
+[
+  { "fecha": "2026-04-21", "accesos": 34 },
+  { "fecha": "2026-04-22", "accesos": 41 },
+  { "fecha": "2026-04-23", "accesos": 28 }
+]
+```
+
+---
+
+## GET /api/analytics/usuarios-rol
+
+Returns user counts grouped by role and account status. Use this to build a role-distribution chart or a user-status summary table.
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin user.
+</ParamField>
+
+### Response — 200 OK
+
+Returns an array of objects, one per unique `(rol, estado)` combination that exists in the database.
+
+<ResponseField name="rol" type="string">
+  User role, e.g. `alumno`, `profesor`, `admin`.
+</ResponseField>
+
+<ResponseField name="estado" type="string">
+  Account status: `activo`, `pendiente`, or `rechazado`.
+</ResponseField>
+
+<ResponseField name="cantidad" type="number">
+  Number of users with this role and status combination.
+</ResponseField>
+
+### Example
+
+```bash
+curl --request GET \
+  --url https://your-domain/api/analytics/usuarios-rol \
+  --header 'Authorization: Bearer <token>'
+```
+
+```json
+[
+  { "rol": "alumno", "estado": "activo", "cantidad": 30 },
+  { "rol": "alumno", "estado": "pendiente", "cantidad": 4 },
+  { "rol": "profesor", "estado": "activo", "cantidad": 8 }
+]
+```
+
+---
+
+## GET /api/analytics/rutas-populares
+
+Returns the top 10 navigation routes ranked by usage count. Only active routes with at least one recorded use are included. Building names are resolved from IDs; if a building cannot be found, the fallback format `{tipo} {id}` is used.
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin user.
+</ParamField>
+
+### Response — 200 OK
+
+Returns an array of up to 10 route objects ordered by `usos` descending.
+
+<ResponseField name="id" type="number">
+  Unique route identifier (`id_ruta`).
+</ResponseField>
+
+<ResponseField name="origen" type="string">
+  Name of the origin building, or `"{tipo} {id}"` if the building record is not found.
+</ResponseField>
+
+<ResponseField name="destino" type="string">
+  Name of the destination building, or `"{tipo} {id}"` if the building record is not found.
+</ResponseField>
+
+<ResponseField name="usos" type="number">
+  Total number of times this route has been used (`contador_usos`).
+</ResponseField>
+
+### Example
+
+```bash
+curl --request GET \
+  --url https://your-domain/api/analytics/rutas-populares \
+  --header 'Authorization: Bearer <token>'
+```
+
+```json
+[
+  { "id": 7, "origen": "Biblioteca Central", "destino": "Edificio de Ingeniería", "usos": 312 },
+  { "id": 3, "origen": "Rectoría", "destino": "Cafetería", "usos": 204 },
+  { "id": 15, "origen": "Edificio de Ingeniería", "destino": "Estadio", "usos": 98 }
+]
+```
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `401` | `{ "error": "No autorizado" }` | Missing or invalid Bearer token. |
+| `403` | `{ "error": "Acceso denegado. Se requieren permisos de administrador" }` | Token belongs to a non-admin user. |
+| `500` | `{ "error": "Error interno" }` | Unexpected server-side error. |

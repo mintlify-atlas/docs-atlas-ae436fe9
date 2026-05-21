@@ -1,0 +1,100 @@
+---
+title: 'Analytics dashboard summary endpoint'
+description: 'Retrieve aggregated totals and active-state counts for all AirGuide entities in a single API round trip. Admin Bearer token required for access.'
+---
+
+The dashboard endpoint gives administrators a bird's-eye view of the platform by returning totals and active-state counts for every major entity in a single round trip. Use it to populate summary widgets or health indicators in an admin panel without querying each resource endpoint individually.
+
+<Warning>
+  This endpoint requires an admin role. Requests made with a non-admin token or without any token will be rejected with `401` or `403`.
+</Warning>
+
+---
+
+## GET /api/analytics/dashboard
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token obtained from the authentication flow. The token must belong to a user with the `admin` role.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="usuarios" type="object">
+  Counts for registered users.
+  <Expandable title="usuarios properties">
+    <ResponseField name="total" type="number">Total number of registered users.</ResponseField>
+    <ResponseField name="activos" type="number">Users with `estado` set to `activo`.</ResponseField>
+    <ResponseField name="pendientes" type="number">Users with `estado` set to `pendiente`, awaiting admin approval.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="edificios" type="object">
+  Counts for campus buildings.
+  <Expandable title="edificios properties">
+    <ResponseField name="total" type="number">Total number of buildings in the system.</ResponseField>
+    <ResponseField name="activos" type="number">Buildings with `activo` set to `true`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="salones" type="number">
+  Total number of classrooms across all buildings.
+</ResponseField>
+
+<ResponseField name="profesores" type="number">
+  Total number of professor records.
+</ResponseField>
+
+<ResponseField name="cubiculos" type="number">
+  Total number of office cubicles across all buildings.
+</ResponseField>
+
+<ResponseField name="eventos" type="object">
+  Counts for campus events.
+  <Expandable title="eventos properties">
+    <ResponseField name="total" type="number">Total number of events.</ResponseField>
+    <ResponseField name="activos" type="number">Events with `activo` set to `true`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="rutas" type="object">
+  Counts for navigation routes.
+  <Expandable title="rutas properties">
+    <ResponseField name="total" type="number">Total number of stored routes.</ResponseField>
+    <ResponseField name="activas" type="number">Routes with `activo` set to `true`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="totalAccesos" type="number">
+  Total login access log entries recorded across all users.
+</ResponseField>
+
+### Example
+
+```bash
+curl --request GET \
+  --url https://your-domain/api/analytics/dashboard \
+  --header 'Authorization: Bearer <token>'
+```
+
+```json
+{
+  "usuarios": { "total": 42, "activos": 38, "pendientes": 4 },
+  "edificios": { "total": 12, "activos": 12 },
+  "salones": 87,
+  "profesores": 15,
+  "cubiculos": 30,
+  "eventos": { "total": 25, "activos": 18 },
+  "rutas": { "total": 140, "activas": 138 },
+  "totalAccesos": 1204
+}
+```
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `401` | `{ "error": "No autorizado" }` | Missing or invalid Bearer token. |
+| `403` | `{ "error": "Acceso denegado. Se requieren permisos de administrador" }` | Token belongs to a non-admin user. |
+| `500` | `{ "error": "Error interno" }` | Unexpected server-side error. |

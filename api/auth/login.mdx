@@ -1,0 +1,103 @@
+---
+title: 'POST /api/auth/login — initiate 2FA login'
+description: 'Submit email and password to begin the AirGuide two-factor authentication flow. On success, a one-time code is sent to the user email address.'
+---
+
+The login flow in AirGuide is a two-step process. This page covers step one: verifying credentials and triggering an OTP email. Use [POST /api/auth/verify-2fa](/api/auth/verify-2fa) to exchange that code for a JWT. If a valid code was not received, use `POST /api/auth/resend-otp` (documented below) to request a fresh one.
+
+---
+
+## POST /api/auth/login
+
+Validates email and password. If the account is active and credentials are correct, generates a one-time code and sends it to the user's email address.
+
+### Request body
+
+<ParamField body="correo" type="string" required>
+  The user's registered email address.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The user's password in plain text. Transmitted over HTTPS; never logged or stored in plain form.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="requiresTwoFactor" type="boolean">
+  Always `true` when credentials are accepted. Indicates the client must complete the OTP step.
+</ResponseField>
+
+<ResponseField name="correo" type="string">
+  The email address to which the OTP was sent. Echo this value when calling `/verify-2fa`.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable confirmation: `"Código de verificación enviado a tu correo electrónico."`
+</ResponseField>
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `401` | `{ "error": "Credenciales incorrectas" }` | Email not found or password mismatch. |
+| `403` | `{ "error": "Tu cuenta aún no ha sido validada. Por favor contacta al administrador." }` | Account `estado` is `pendiente` or `rechazado`. |
+| `400` | `{ "error": "<validation message>" }` | Zod schema validation failed (e.g. missing field). |
+
+### Example
+
+```bash
+curl --request POST \
+  --url https://api.example.com/api/auth/login \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "correo": "alumno@ejemplo.edu.mx",
+    "password": "s3cr3tP@ss"
+  }'
+```
+
+```json
+{
+  "requiresTwoFactor": true,
+  "correo": "alumno@ejemplo.edu.mx",
+  "message": "Código de verificación enviado a tu correo electrónico."
+}
+```
+
+---
+
+## POST /api/auth/resend-otp
+
+Invalidates any unused OTP for the account and sends a fresh code to the same email. Call this when the user did not receive the original code or when the code has expired.
+
+### Request body
+
+<ParamField body="correo" type="string" required>
+  The email address of the account for which a new OTP is requested.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="message" type="string">
+  A confirmation string. Returns `"Si el correo existe, recibirás un nuevo código."` when the email is not found or the account is not active, and `"Nuevo código enviado a tu correo electrónico."` when the code was sent.
+</ResponseField>
+
+<Note>
+  This endpoint always returns HTTP 200 regardless of whether the email exists in the system. This prevents email enumeration — you cannot use the response to determine whether an account is registered.
+</Note>
+
+### Example
+
+```bash
+curl --request POST \
+  --url https://api.example.com/api/auth/resend-otp \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "correo": "alumno@ejemplo.edu.mx"
+  }'
+```
+
+```json
+{
+  "message": "Nuevo código enviado a tu correo electrónico."
+}
+```

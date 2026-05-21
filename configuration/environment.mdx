@@ -1,0 +1,163 @@
+---
+title: "Configure environment variables for AirGuide"
+description: "Set up the .env file that controls your database connection, authentication, CORS policy, and email delivery for the AirGuide backend."
+---
+
+AirGuide reads all runtime configuration from a `.env` file at the project root. Before starting any service you must create this file and supply values for each variable. The sections below explain what every variable does so you can configure the backend correctly for your environment.
+
+## Complete .env template
+
+Copy the template below into a new `.env` file at the root of the repository and replace the placeholder values with your own.
+
+```env
+DATABASE_URL="postgres://<user>:<password>@<host>:5432/<db>?sslmode=require"
+
+API_URL="http://localhost:3001/api"
+API_KEY="<your-google-api-key>"
+GOOGLE_ROUTES_API_KEY="<your-google-api-key>"
+NODE_ENV="development"
+
+JWT_SECRET="<random-secret>"
+JWT_EXPIRES_IN="1d"
+
+CORS_ORIGIN="http://localhost:5173"
+
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_SECURE="false"
+SMTP_USER="you@gmail.com"
+SMTP_PASS="<app-password>"
+SMTP_FROM="AirGuide <you@gmail.com>"
+```
+
+<Warning>
+Never commit real secrets — database passwords, JWT secrets, or SMTP credentials — to version control. Add `.env` to your `.gitignore` before your first commit.
+</Warning>
+
+## Variable reference
+
+<AccordionGroup>
+  <Accordion title="Database">
+    ### `DATABASE_URL`
+
+    The PostgreSQL connection string used by Prisma to connect to your database. The format is:
+
+    ```env
+    DATABASE_URL="postgres://<user>:<password>@<host>:<port>/<database>?sslmode=require"
+    ```
+
+    For Prisma Data Platform (pooled connections), the host ends in `.db.prisma.io`. For a local database, use `localhost:5432` and omit `sslmode=require`.
+
+    This variable is read directly by Prisma at both migration time and runtime — every service that queries the database uses this value.
+  </Accordion>
+
+  <Accordion title="Application">
+    ### `API_URL`
+
+    The public base URL of the API Gateway, including the `/api` path prefix. The frontend uses this value to construct request URLs.
+
+    - **Development:** `http://localhost:3001/api`
+    - **Production:** the public URL of your deployed gateway, e.g. `https://api.yourdomain.com/api`
+
+    ---
+
+    ### `API_KEY` / `GOOGLE_ROUTES_API_KEY`
+
+    A Google API key used by the Navigation Service to call the Google Routes API for live walking directions. You can generate one in the [Google Cloud Console](https://console.cloud.google.com/). Enable the **Routes API** for the key.
+
+    The navigation service reads this value from `GOOGLE_ROUTES_API_KEY` at runtime. Set both variables to the same key value to ensure compatibility:
+
+    ```env
+    API_KEY="your-google-api-key"
+    GOOGLE_ROUTES_API_KEY="your-google-api-key"
+    ```
+
+    ---
+
+    ### `NODE_ENV`
+
+    Controls runtime behavior across all services. Accepted values are `development` and `production`.
+
+    - In `development`, services log verbose output and Prisma runs in dev mode.
+    - In `production`, optimized builds run from `dist/` and error details are suppressed from API responses.
+  </Accordion>
+
+  <Accordion title="JWT">
+    ### `JWT_SECRET`
+
+    The secret key used to sign and verify JSON Web Tokens. All six services share this value — a token signed by the Auth Service is verified by the Gateway and any downstream service that needs it.
+
+    Use a long, random string (at least 32 characters). You can generate one with:
+
+    ```bash
+    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+    ```
+
+    ---
+
+    ### `JWT_EXPIRES_IN`
+
+    How long an issued JWT remains valid. Uses the [ms](https://github.com/vercel/ms) format: `1d` (one day), `8h` (eight hours), `30m` (thirty minutes). After expiry the client must re-authenticate.
+  </Accordion>
+
+  <Accordion title="CORS">
+    ### `CORS_ORIGIN`
+
+    The origin that the API Gateway allows for cross-origin requests. Set this to the URL of your frontend application.
+
+    - **Development:** `http://localhost:5173` (Vite default)
+    - **Production:** your deployed frontend domain, e.g. `https://app.yourdomain.com`
+
+    Only one origin is supported per deployment. If you need to allow multiple origins, update the CORS configuration in `src/gateway/index.ts`.
+  </Accordion>
+
+  <Accordion title="Email (SMTP)">
+    ### `SMTP_HOST`
+
+    Hostname of your SMTP server. The default template uses `smtp.gmail.com` for Gmail.
+
+    ---
+
+    ### `SMTP_PORT`
+
+    Port used by the SMTP server. Common values:
+
+    | Port | Protocol |
+    |------|----------|
+    | `587` | STARTTLS (recommended) |
+    | `465` | SSL/TLS |
+    | `25` | Unencrypted (not recommended) |
+
+    ---
+
+    ### `SMTP_SECURE`
+
+    Set to `"true"` when using port `465` (direct TLS). Set to `"false"` when using port `587` with STARTTLS. The Auth Service passes this value to Nodemailer's `secure` option.
+
+    ---
+
+    ### `SMTP_USER`
+
+    The email address used to authenticate with the SMTP server. For Gmail this is your full Gmail address.
+
+    ---
+
+    ### `SMTP_PASS`
+
+    The password for authenticating with the SMTP server. For Gmail accounts with two-factor authentication enabled, use an **App Password** rather than your account password.
+
+    <Tip>
+      Generate a Gmail App Password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords). Select "Mail" as the app and your device type. Copy the 16-character password into `SMTP_PASS`.
+    </Tip>
+
+    ---
+
+    ### `SMTP_FROM`
+
+    The sender display name and address that appears in OTP emails. Use the format `Name <address@domain.com>`, for example:
+
+    ```env
+    SMTP_FROM="AirGuide <no-reply@yourdomain.com>"
+    ```
+  </Accordion>
+</AccordionGroup>

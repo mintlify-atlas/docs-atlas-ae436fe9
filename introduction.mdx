@@ -1,0 +1,74 @@
+---
+title: "AirGuide: University Campus Navigation API"
+description: "AirGuide is a microservices REST API that powers campus navigation, building management, event scheduling, and usage analytics for universities."
+---
+
+AirGuide Backend is a production-ready microservices API built with Node.js, Express, and Prisma. It provides everything needed to build a university campus navigation experience — from authenticated user sessions and building directories to AI-powered event scheduling and real-time congestion prediction for campus routes.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Make your first authenticated API call in minutes
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand the microservices layout and gateway routing
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth/login">
+    Full endpoint reference with request and response schemas
+  </Card>
+  <Card title="Authentication" icon="lock" href="/auth/overview">
+    Learn how JWT tokens and 2FA work end to end
+  </Card>
+</CardGroup>
+
+## What AirGuide provides
+
+AirGuide's backend is organized into five independent services, each with a focused responsibility:
+
+<CardGroup cols={2}>
+  <Card title="Auth Service" icon="user-shield" href="/api/auth/login">
+    User registration, 2FA via email OTP, JWT issuance, and admin approval workflows
+  </Card>
+  <Card title="Buildings Service" icon="building" href="/api/buildings/buildings">
+    CRUD management for campus buildings, classrooms, professor cubicles, and occupancy data
+  </Card>
+  <Card title="Events Service" icon="calendar" href="/api/events/events">
+    Event creation with AI-powered scheduling conflict resolution and QR attendance confirmation
+  </Card>
+  <Card title="Navigation Service" icon="map" href="/api/navigation/routes">
+    Turn-by-turn campus routes, GeoJSON map data, Google Routes integration, and congestion heatmaps
+  </Card>
+  <Card title="Analytics Service" icon="chart-bar" href="/api/analytics/dashboard">
+    Admin dashboard with route usage, access logs, user breakdowns, and AI model training
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration/environment">
+    Environment variables, database setup, and deployment options
+  </Card>
+</CardGroup>
+
+## Key capabilities
+
+- **Two-factor authentication** — Login is a two-step flow: credentials + email OTP before a JWT is issued
+- **Role-based access control** — Four roles (rector, admin, profesor, alumno) with an admin approval step for new accounts
+- **AI event scheduling** — TensorFlow.js neural network evaluates event conflicts and can displace lower-priority events
+- **Campus routing** — Pre-seeded turn-by-turn routes with waypoint coordinates, plus live Google Routes API integration for walking directions
+- **Congestion prediction** — Per-route AI model predicts congestion score by hour; global heatmap endpoint available
+- **GeoJSON map data** — Combined endpoint returns campus buildings (points) and walkable paths (LineStrings) for map rendering
+
+## Base URL
+
+All requests go through the API Gateway on port `3001`:
+
+```
+http://localhost:3001
+```
+
+Each microservice also runs on its own port for direct access during development:
+
+| Service | Port |
+|---------|------|
+| API Gateway | 3001 |
+| Auth Service | 3011 |
+| Buildings Service | 3012 |
+| Events Service | 3013 |
+| Navigation Service | 3014 |
+| Analytics Service | 3015 |

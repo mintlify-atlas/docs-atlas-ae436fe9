@@ -1,0 +1,204 @@
+---
+title: 'Admin user management endpoints'
+description: 'List all users, review pending registrations, and approve or reject accounts. All endpoints on this page require an admin bearer token.'
+---
+
+These endpoints allow administrators to manage the AirGuide user base. They cover listing all registered users, filtering by pending approval status, and updating an account's `estado`. Every endpoint on this page enforces the admin role — requests from `profesor`, `alumno`, or unauthenticated clients are rejected.
+
+<Warning>
+  All endpoints on this page require a valid JWT issued to a user with the `admin` role. Requests from other roles (including `rector`), or requests without an `Authorization` header, will be rejected with `401 Unauthorized` or `403 Forbidden`.
+</Warning>
+
+---
+
+## GET /api/auth/users
+
+Returns every user account in the system, ordered by registration date descending.
+
+**Authentication required:** `Authorization: Bearer <token>` (admin only)
+
+### Response — 200 OK
+
+An array of user objects.
+
+<ResponseField name="id_usuario" type="number">
+  Internal numeric user identifier.
+</ResponseField>
+
+<ResponseField name="correo" type="string">
+  User's email address.
+</ResponseField>
+
+<ResponseField name="nombre" type="string">
+  User's full name.
+</ResponseField>
+
+<ResponseField name="matricula" type="string">
+  Student ID number, or empty string if not set.
+</ResponseField>
+
+<ResponseField name="rol" type="string">
+  Role assigned to the account: `rector`, `admin`, `profesor`, or `alumno`.
+</ResponseField>
+
+<ResponseField name="estado" type="string">
+  Account status: `activo`, `pendiente`, or `rechazado`.
+</ResponseField>
+
+<ResponseField name="fecha_registro" type="string">
+  ISO 8601 timestamp of account creation.
+</ResponseField>
+
+<ResponseField name="fecha_validacion" type="string">
+  ISO 8601 timestamp of last admin validation. May be `null`.
+</ResponseField>
+
+### Example
+
+```bash
+curl --request GET \
+  --url https://api.example.com/api/auth/users \
+  --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+```
+
+```json
+[
+  {
+    "id_usuario": 42,
+    "correo": "alumno@ejemplo.edu.mx",
+    "nombre": "Juan Pérez",
+    "matricula": "A00123456",
+    "rol": "alumno",
+    "estado": "activo",
+    "fecha_registro": "2024-08-15T10:30:00.000Z",
+    "fecha_validacion": "2024-08-16T09:00:00.000Z"
+  }
+]
+```
+
+---
+
+## GET /api/auth/pending
+
+Returns only accounts with `estado = "pendiente"`, ordered by registration date descending. Use this endpoint to build an admin approval queue.
+
+**Authentication required:** `Authorization: Bearer <token>` (admin only)
+
+### Response — 200 OK
+
+An array of pending user objects. Fields are identical to the user list above, except `fecha_validacion` is not included (pending accounts have not been validated yet).
+
+<ResponseField name="id_usuario" type="number">
+  Internal numeric user identifier.
+</ResponseField>
+
+<ResponseField name="correo" type="string">
+  User's email address.
+</ResponseField>
+
+<ResponseField name="nombre" type="string">
+  User's full name.
+</ResponseField>
+
+<ResponseField name="matricula" type="string">
+  Student ID number, or empty string if not set.
+</ResponseField>
+
+<ResponseField name="rol" type="string">
+  Role assigned to the account.
+</ResponseField>
+
+<ResponseField name="estado" type="string">
+  Always `"pendiente"` for results from this endpoint.
+</ResponseField>
+
+<ResponseField name="fecha_registro" type="string">
+  ISO 8601 timestamp of account creation.
+</ResponseField>
+
+### Example
+
+```bash
+curl --request GET \
+  --url https://api.example.com/api/auth/pending \
+  --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+```
+
+```json
+[
+  {
+    "id_usuario": 87,
+    "correo": "nuevo@ejemplo.edu.mx",
+    "nombre": "María López",
+    "matricula": "A00198765",
+    "rol": "alumno",
+    "estado": "pendiente",
+    "fecha_registro": "2024-09-01T14:20:00.000Z"
+  }
+]
+```
+
+---
+
+## PUT /api/auth/validate/:id
+
+Approves or rejects a user account by updating its `estado`. Also sets `fecha_validacion` to the current timestamp.
+
+**Authentication required:** `Authorization: Bearer <token>` (admin only)
+
+### Path parameter
+
+<ParamField path="id" type="number" required>
+  The `id_usuario` of the account to update.
+</ParamField>
+
+### Request body
+
+<ParamField body="estado" type="string" required>
+  The new account status. Must be either `"activo"` (approve) or `"rechazado"` (reject). Any other value returns a `400` error.
+</ParamField>
+
+### Response — 200 OK
+
+The full updated user object as stored in the database, including all fields.
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `400` | `{ "error": "Estado inválido" }` | `estado` was not `"activo"` or `"rechazado"`. |
+
+### Examples
+
+**Approve an account:**
+
+```bash
+curl --request PUT \
+  --url https://api.example.com/api/auth/validate/87 \
+  --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' \
+  --header 'Content-Type: application/json' \
+  --data '{ "estado": "activo" }'
+```
+
+**Reject an account:**
+
+```bash
+curl --request PUT \
+  --url https://api.example.com/api/auth/validate/87 \
+  --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' \
+  --header 'Content-Type: application/json' \
+  --data '{ "estado": "rechazado" }'
+```
+
+```json
+{
+  "id_usuario": 87,
+  "correo": "nuevo@ejemplo.edu.mx",
+  "nombre": "María López",
+  "matricula": "A00198765",
+  "rol": "alumno",
+  "estado": "activo",
+  "fecha_registro": "2024-09-01T14:20:00.000Z",
+  "fecha_validacion": "2024-09-02T08:45:00.000Z"
+}
+```

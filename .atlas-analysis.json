@@ -1,0 +1,126 @@
+{
+  "projectType": "api-service",
+  "projectName": "AirGuide Backend API",
+  "projectDescription": "A microservices-based REST API for a university campus navigation platform, providing authentication, building/room management, event scheduling with AI conflict resolution, turn-by-turn routing, and usage analytics.",
+  "theme": "luma",
+  "primaryColor": "#242c54",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart", "architecture"]
+          },
+          {
+            "group": "Authentication",
+            "pages": ["auth/overview", "auth/register", "auth/login", "auth/two-factor", "auth/password-reset"]
+          },
+          {
+            "group": "Configuration",
+            "pages": ["configuration/environment", "configuration/database", "configuration/deployment"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Auth Service",
+            "pages": ["api/auth/login", "api/auth/verify-2fa", "api/auth/register", "api/auth/users"]
+          },
+          {
+            "group": "Buildings Service",
+            "pages": ["api/buildings/buildings", "api/buildings/rooms", "api/buildings/professors", "api/buildings/cubicles"]
+          },
+          {
+            "group": "Events Service",
+            "pages": ["api/events/events", "api/events/attendance"]
+          },
+          {
+            "group": "Navigation Service",
+            "pages": ["api/navigation/routes", "api/navigation/map", "api/navigation/congestion"]
+          },
+          {
+            "group": "Analytics Service",
+            "pages": ["api/analytics/dashboard", "api/analytics/reports"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Microservices architecture with API gateway proxying to 5 independent services",
+    "Two-factor authentication (2FA) via email OTP with JWT session tokens",
+    "Role-based access control (rector, admin, profesor, alumno) with account validation workflow",
+    "Campus building, classroom, professor cubicle, and room management",
+    "AI-powered event scheduling with TensorFlow.js conflict resolution and priority-based displacement",
+    "Indoor/outdoor navigation with turn-by-turn route instructions and geographic path data",
+    "Google Routes API integration for walking directions with encoded polylines",
+    "AI congestion prediction for campus routes using neural networks",
+    "GeoJSON map data endpoint combining buildings and walkable paths from OpenStreetMap",
+    "Admin analytics dashboard with access logs, route usage heatmaps, and user statistics"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/login",
+    "POST /api/auth/verify-2fa",
+    "POST /api/auth/resend-otp",
+    "POST /api/auth/register",
+    "GET /api/auth/me",
+    "POST /api/auth/forgot-password",
+    "POST /api/auth/reset-password",
+    "PUT /api/auth/validate/:id",
+    "GET /api/auth/pending",
+    "GET /api/auth/users",
+    "GET /api/edificios",
+    "GET /api/edificios/:id",
+    "POST /api/edificios",
+    "PUT /api/edificios/:id",
+    "DELETE /api/edificios/:id",
+    "GET /api/edificios/salones",
+    "GET /api/edificios/:id/salones",
+    "POST /api/edificios/:id/salones",
+    "PUT /api/edificios/salones/:id",
+    "DELETE /api/edificios/salones/:id",
+    "GET /api/profesores",
+    "GET /api/profesores/:id",
+    "POST /api/profesores",
+    "PUT /api/profesores/:id",
+    "DELETE /api/profesores/:id",
+    "GET /api/edificios/cubiculos",
+    "POST /api/edificios/cubiculos",
+    "PUT /api/edificios/cubiculos/:id",
+    "DELETE /api/edificios/cubiculos/:id",
+    "GET /api/eventos",
+    "GET /api/eventos/:id",
+    "POST /api/eventos",
+    "PUT /api/eventos/:id",
+    "DELETE /api/eventos/:id",
+    "POST /api/eventos/:id/confirmar-asistencia",
+    "POST /api/eventos/entrenar-neurona",
+    "GET /api/rutas",
+    "GET /api/rutas/:id",
+    "POST /api/rutas/find",
+    "POST /api/rutas",
+    "PUT /api/rutas/:id",
+    "DELETE /api/rutas/:id",
+    "POST /api/rutas/:id/detalles",
+    "DELETE /api/rutas/detalles/:id",
+    "GET /api/mapa/data",
+    "POST /api/google/compute-route",
+    "POST /api/rutas/check-congestion",
+    "GET /api/rutas/heatmap",
+    "GET /api/analytics/dashboard",
+    "GET /api/analytics/edificios-tipo",
+    "GET /api/analytics/eventos-proximos",
+    "GET /api/analytics/accesos-recientes",
+    "GET /api/analytics/accesos-timeline",
+    "GET /api/analytics/usuarios-rol",
+    "GET /api/analytics/rutas-populares",
+    "POST /api/analytics/train-congestion",
+    "GET /health"
+  ]
+}

@@ -1,0 +1,424 @@
+---
+title: 'Campus navigation route endpoints'
+description: 'Manage and query campus navigation routes, including waypoints, origin/destination types, and admin operations for creating and updating routes.'
+---
+
+Routes (`rutas`) describe pre-defined navigation paths on campus. Each route connects an origin to a destination using one of four location types — `edificio`, `salon`, `cubiculo`, or `evento` — and carries an ordered list of waypoints (`RutaDetalle`) that a client renders as turn-by-turn instructions. Routes can be internal (on-campus) or external.
+
+---
+
+## GET /api/rutas
+
+Returns all routes matching the supplied filters. Waypoints are included and ordered by their `orden` field.
+
+### Query parameters
+
+<ParamField query="tipo" type="string">
+  Filter by route type. Accepted values: `interna`, `externa`.
+</ParamField>
+
+<ParamField query="activo" type="string">
+  Filter by active status. Accepted values: `"true"`, `"false"`.
+</ParamField>
+
+<ParamField query="origen_tipo" type="string">
+  Filter by origin location type. Accepted values: `edificio`, `salon`, `cubiculo`, `evento`.
+</ParamField>
+
+<ParamField query="destino_tipo" type="string">
+  Filter by destination location type. Accepted values: `edificio`, `salon`, `cubiculo`, `evento`.
+</ParamField>
+
+### Response — 200 OK
+
+Array of route objects, each including a `detalles` array of waypoints.
+
+<ResponseField name="id_ruta" type="integer">
+  Unique route identifier.
+</ResponseField>
+
+<ResponseField name="tipo" type="string">
+  Route type: `interna` or `externa`.
+</ResponseField>
+
+<ResponseField name="origen_tipo" type="string">
+  Origin location type: `edificio`, `salon`, `cubiculo`, or `evento`.
+</ResponseField>
+
+<ResponseField name="origen_id" type="integer">
+  ID of the origin location in its respective table.
+</ResponseField>
+
+<ResponseField name="destino_tipo" type="string">
+  Destination location type: `edificio`, `salon`, `cubiculo`, or `evento`.
+</ResponseField>
+
+<ResponseField name="destino_id" type="integer">
+  ID of the destination location in its respective table.
+</ResponseField>
+
+<ResponseField name="tiempo_estimado" type="integer">
+  Estimated travel time in minutes. May be `null` if not set.
+</ResponseField>
+
+<ResponseField name="contador_usos" type="integer">
+  Number of times this route has been looked up via `POST /api/rutas/find`.
+</ResponseField>
+
+<ResponseField name="activo" type="boolean">
+  Whether the route is active.
+</ResponseField>
+
+<ResponseField name="detalles" type="object[]">
+  Ordered waypoints for the route.
+  <Expandable title="waypoint properties">
+    <ResponseField name="id_detalle" type="integer">
+      Unique waypoint identifier.
+    </ResponseField>
+    <ResponseField name="id_ruta" type="integer">
+      Parent route ID.
+    </ResponseField>
+    <ResponseField name="orden" type="integer">
+      Step order (ascending). The list is always returned sorted by this value.
+    </ResponseField>
+    <ResponseField name="instruccion" type="string">
+      Human-readable navigation instruction for this step.
+    </ResponseField>
+    <ResponseField name="latitud" type="number">
+      Latitude coordinate of the waypoint (decimal).
+    </ResponseField>
+    <ResponseField name="longitud" type="number">
+      Longitude coordinate of the waypoint (decimal).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl http://localhost:3001/api/rutas?tipo=interna&activo=true
+```
+
+---
+
+## GET /api/rutas/:id
+
+Returns a single route by its `id_ruta`. Waypoints are included and ordered by `orden`.
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_ruta` of the route to retrieve.
+</ParamField>
+
+### Response — 200 OK
+
+A single route object with the same shape as described in [GET /api/rutas](#get-api-rutas).
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `404` | `{ "error": "Ruta no encontrada" }` | No route exists with the given ID. |
+
+### Example
+
+```bash
+curl http://localhost:3001/api/rutas/3
+```
+
+---
+
+## POST /api/rutas/find
+
+Finds an active route by matching origin and destination type and ID. Use this endpoint to retrieve a route for real-time navigation rather than browsing all routes.
+
+<Note>
+  Every successful call to this endpoint increments the route's `contador_usos` field by one. This counter drives the congestion prediction model — see [POST /api/rutas/check-congestion](/api/navigation/congestion).
+</Note>
+
+### Request body
+
+<ParamField body="origen_tipo" type="string" required>
+  Origin location type: `edificio`, `salon`, `cubiculo`, or `evento`.
+</ParamField>
+
+<ParamField body="origen_id" type="integer" required>
+  ID of the origin location in its respective table.
+</ParamField>
+
+<ParamField body="destino_tipo" type="string" required>
+  Destination location type: `edificio`, `salon`, `cubiculo`, or `evento`.
+</ParamField>
+
+<ParamField body="destino_id" type="integer" required>
+  ID of the destination location in its respective table.
+</ParamField>
+
+### Response — 200 OK
+
+The matching active route object including its `detalles` array, with the same shape as described in [GET /api/rutas](#get-api-rutas).
+
+### Error responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `400` | `{ "error": "Se requieren origen y destino" }` | One or more required body fields are missing. |
+| `404` | `{ "error": "No se encontró una ruta" }` | No active route matches the given origin/destination. |
+
+### Example
+
+```bash
+curl --request POST \
+  --url http://localhost:3001/api/rutas/find \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "origen_tipo": "edificio",
+    "origen_id": 1,
+    "destino_tipo": "salon",
+    "destino_id": 12
+  }'
+```
+
+---
+
+## POST /api/rutas
+
+Creates a new route. You may optionally include waypoints (`detalles`) in the same request body.
+
+<Warning>
+  Requires a valid admin Bearer token. Requests without a valid token or with a non-admin role are rejected.
+</Warning>
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin account: `Bearer <token>`.
+</ParamField>
+
+### Request body
+
+<ParamField body="tipo" type="string" required>
+  Route type: `interna` or `externa`.
+</ParamField>
+
+<ParamField body="origen_tipo" type="string" required>
+  Origin location type: `edificio`, `salon`, `cubiculo`, or `evento`.
+</ParamField>
+
+<ParamField body="origen_id" type="integer" required>
+  ID of the origin location.
+</ParamField>
+
+<ParamField body="destino_tipo" type="string" required>
+  Destination location type: `edificio`, `salon`, `cubiculo`, or `evento`.
+</ParamField>
+
+<ParamField body="destino_id" type="integer" required>
+  ID of the destination location.
+</ParamField>
+
+<ParamField body="tiempo_estimado" type="integer">
+  Estimated travel time in minutes.
+</ParamField>
+
+<ParamField body="activo" type="boolean" default="true">
+  Whether the route should be active immediately.
+</ParamField>
+
+<ParamField body="detalles" type="object[]">
+  Optional array of waypoints to create together with the route.
+  <Expandable title="waypoint properties">
+    <ResponseField name="orden" type="integer">
+      Step order (ascending).
+    </ResponseField>
+    <ResponseField name="instruccion" type="string">
+      Navigation instruction for this waypoint.
+    </ResponseField>
+    <ResponseField name="latitud" type="number">
+      Latitude coordinate (decimal, up to 8 decimal places).
+    </ResponseField>
+    <ResponseField name="longitud" type="number">
+      Longitude coordinate (decimal, up to 8 decimal places).
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+### Response — 201 Created
+
+The newly created route object including any supplied `detalles`, ordered by `orden`.
+
+### Example
+
+```bash
+curl --request POST \
+  --url http://localhost:3001/api/rutas \
+  --header 'Authorization: Bearer <admin-token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "tipo": "interna",
+    "origen_tipo": "edificio",
+    "origen_id": 1,
+    "destino_tipo": "salon",
+    "destino_id": 5,
+    "tiempo_estimado": 4,
+    "detalles": [
+      { "orden": 1, "instruccion": "Sal por la puerta principal", "latitud": 19.43260, "longitud": -99.13320 },
+      { "orden": 2, "instruccion": "Gira a la derecha en el pasillo B", "latitud": 19.43280, "longitud": -99.13300 }
+    ]
+  }'
+```
+
+---
+
+## PUT /api/rutas/:id
+
+Updates an existing route's fields. Only the fields included in the request body are changed. Waypoints are not replaced by this endpoint — use [POST /api/rutas/:id/detalles](#post-api-rutas-id-detalles) and [DELETE /api/rutas/detalles/:id](#delete-api-rutas-detalles-id) to modify waypoints individually.
+
+<Warning>
+  Requires a valid admin Bearer token.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_ruta` of the route to update.
+</ParamField>
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin account: `Bearer <token>`.
+</ParamField>
+
+### Response — 200 OK
+
+The updated route object including its `detalles`, ordered by `orden`.
+
+### Example
+
+```bash
+curl --request PUT \
+  --url http://localhost:3001/api/rutas/3 \
+  --header 'Authorization: Bearer <admin-token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "tiempo_estimado": 6,
+    "activo": false
+  }'
+```
+
+---
+
+## DELETE /api/rutas/:id
+
+Permanently deletes a route and all of its associated waypoints.
+
+<Warning>
+  Requires a valid admin Bearer token. Deletion is irreversible and cascades to all `RutaDetalle` records for the route.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_ruta` of the route to delete.
+</ParamField>
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin account: `Bearer <token>`.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="message" type="string">
+  Confirmation string: `"Ruta eliminada"`.
+</ResponseField>
+
+---
+
+## POST /api/rutas/:id/detalles
+
+Adds a single waypoint to an existing route.
+
+<Warning>
+  Requires a valid admin Bearer token.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_ruta` of the route to add the waypoint to.
+</ParamField>
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin account: `Bearer <token>`.
+</ParamField>
+
+### Request body
+
+<ParamField body="orden" type="integer" required>
+  Step order for this waypoint. Lower values appear first.
+</ParamField>
+
+<ParamField body="instruccion" type="string" required>
+  Navigation instruction displayed to the user at this step.
+</ParamField>
+
+<ParamField body="latitud" type="number" required>
+  Latitude coordinate (decimal, up to 8 decimal places).
+</ParamField>
+
+<ParamField body="longitud" type="number" required>
+  Longitude coordinate (decimal, up to 8 decimal places).
+</ParamField>
+
+### Response — 201 Created
+
+The newly created `RutaDetalle` object.
+
+### Example
+
+```bash
+curl --request POST \
+  --url http://localhost:3001/api/rutas/3/detalles \
+  --header 'Authorization: Bearer <admin-token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "orden": 3,
+    "instruccion": "Sube las escaleras al piso 2",
+    "latitud": 19.43290,
+    "longitud": -99.13310
+  }'
+```
+
+---
+
+## DELETE /api/rutas/detalles/:id
+
+Permanently removes a single waypoint from its route.
+
+<Warning>
+  Requires a valid admin Bearer token.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The `id_detalle` of the waypoint to delete.
+</ParamField>
+
+### Request headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for an admin account: `Bearer <token>`.
+</ParamField>
+
+### Response — 200 OK
+
+<ResponseField name="message" type="string">
+  Confirmation string: `"Detalle eliminado"`.
+</ResponseField>

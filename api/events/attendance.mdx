@@ -1,0 +1,83 @@
+---
+title: 'Confirm event attendance via QR code'
+description: 'Increment the confirmed-attendee counter for an AirGuide event. Designed for QR code scanning at the venue entrance — no authentication required.'
+---
+
+This endpoint is the backend target for QR codes displayed at event venues. When a visitor scans a QR code, their device calls this endpoint, and the event's `asistentes_confirmados` counter increments by one. Because the endpoint is intentionally public, no login or token is required — anyone present at the venue can confirm attendance by scanning.
+
+---
+
+## Confirm attendance
+
+```
+POST /api/eventos/:id/confirmar-asistencia
+```
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  The event's `id_evento`. This value is typically encoded in the QR code displayed at the venue.
+</ParamField>
+
+### Request body
+
+No request body is required or expected.
+
+### Response
+
+<ResponseField name="message" type="string">
+  Confirmation message. Always `"Asistencia confirmada"` on success.
+</ResponseField>
+<ResponseField name="asistentes_confirmados" type="integer">
+  The updated total count of confirmed attendees after this increment.
+</ResponseField>
+
+Returns `404` if no event exists with the given `id`.
+
+```bash
+curl -X POST https://your-domain/api/eventos/42/confirmar-asistencia
+```
+
+### Example response
+
+```json
+{
+  "message": "Asistencia confirmada",
+  "asistentes_confirmados": 37
+}
+```
+
+---
+
+## Attendance fields on the Evento model
+
+Each event tracks two attendance-related counts:
+
+<ResponseField name="total_invitados" type="integer" default="0">
+  The expected number of attendees. Set when the event is created (or updated) via the `total_invitados` body field. This value does not change automatically — it represents the invitation list size or venue capacity you recorded at scheduling time.
+</ResponseField>
+
+<ResponseField name="asistentes_confirmados" type="integer" default="0">
+  The running count of QR code scans received for this event. Every successful call to `POST /api/eventos/:id/confirmar-asistencia` increments this value by exactly 1. It starts at `0` and has no upper bound enforced by the API.
+</ResponseField>
+
+<Tip>
+  To calculate an attendance rate, divide `asistentes_confirmados` by `total_invitados`. Both fields are returned on every event object from `GET /api/eventos` and `GET /api/eventos/:id`.
+</Tip>
+
+---
+
+## How QR code attendance works
+
+The typical flow is:
+
+1. An admin creates an event with a known guest count (`total_invitados`).
+2. A QR code is generated that encodes the confirmation URL — e.g. `https://your-domain/api/eventos/42/confirmar-asistencia`.
+3. The QR code is displayed at the venue entrance (printed poster, screen, badge, etc.).
+4. Each attendee scans the code with their phone. The scan triggers a `POST` to this endpoint.
+5. `asistentes_confirmados` increases by 1 for each scan.
+6. Admins can monitor turnout in real time by polling `GET /api/eventos/42`.
+
+<Note>
+  Because no authentication is required, a single visitor could scan the code multiple times and increment the counter more than once. If accurate deduplication is important for your use case, consider adding client-side controls (e.g. disabling the QR code after first scan on a managed device).
+</Note>
